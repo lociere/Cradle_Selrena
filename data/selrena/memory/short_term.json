@@ -1,0 +1,98 @@
+[
+  {
+    "role": "user",
+    "content": "晚上好，小月。",
+    "timestamp": 1770868908.817779,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "晚上好。你今天好像特别执着于打招呼呢。",
+    "timestamp": 1770868912.395973,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "小月，晚上好。",
+    "timestamp": 1770868923.516271,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "晚上好。你今天好像特别执着于打招呼呢。",
+    "timestamp": 1770868925.082888,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "小月，你听得见我说话吗？",
+    "timestamp": 1770868938.582683,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "当然听得到。你该不会以为我会像那些信号不好的老旧设备一样突然断线吧？",
+    "timestamp": 1770868940.09867,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "你从哪里看出来的？",
+    "timestamp": 1770868943.650957,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "因为正常人不会在连续得到回应后还反复确认同一件事。除非……你其实是想测试我的耐心？",
+    "timestamp": 1770868945.582329,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "下月，你喜欢什么样的衣服？",
+    "timestamp": 1770868968.642223,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "这个问题有点突然呢。不过既然你问了……我喜欢能完美融入环境的款式。毕竟太显眼的话，观察人类时会不太方便。",
+    "timestamp": 1770868970.456335,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "小月，你喜欢中式还是西式的衣服？",
+    "timestamp": 1770869291.302408,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "西式的衣服更方便一些，毕竟不需要太复杂的搭配。不过偶尔穿穿传统的汉服也挺有趣的，那种感觉就像是穿越到了古代的茶馆里。",
+    "timestamp": 1770869297.619357,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "退出。",
+    "timestamp": 1770869319.313664,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1770869319.328923,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "小月，那如果我让你自己选衣服的话，你会选什么？",
+    "timestamp": 1770869461.170897,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "这个问题……让我想想。可能会选一件看起来最普通的连衣裙吧。毕竟太过华丽的衣服反而会让人忽略穿着者本身呢。",
+    "timestamp": 1770869464.866685,
+    "metadata": {}
+  }
+]

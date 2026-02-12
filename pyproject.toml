@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cradle-selrena"
+version = "0.1.0"
+description = "Cradle_Selrena: 摇篮：月见"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+dependencies = [
+    "pydantic>=2.0",
+    "python-dotenv",
+    "pyyaml",
+    "loguru",
+    "PySide6",
+    "openai>=1.0",
+    "langchain",
+    "langgraph",
+    "numpy",
+    "pillow",
+    "pyautogui",
+    "edge-tts",
+    "requests",
+]
+
+[project.scripts]
+cradle = "cradle.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cradle*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']

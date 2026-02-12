@@ -1,0 +1,10 @@
+{
+    "base_path": "D:/elise/Cradle_Selrena/assets/sounds/emotions",
+    "emotions": {
+        "calm": {
+            "file": "calm.wav",
+            "prompt": "但我不确定……见到她是不是一件正确的事",
+            "lang": "zh"
+        }
+    }
+}

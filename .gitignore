@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Runtime Data
+data/cache/
+data/memoey/
+data/memory/
+data/temp/
+!data/README.txt
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Environment and Secrets
+.env
+configs/secrets.yaml
+configs/settings.yaml
+
+# Logs
+logs/*.log
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project Specific
+assets/models/*
+!assets/models/.gitkeep
+assets/sounds/*
+!assets/sounds/.gitkeep
+assets/images/*
+!assets/images/.gitkeep
+tests/__pycache__/
+tests/temp/
+
+# Documentation
+docs/architecture/
+docs/operational/
+!docs/README.md
+
+# Runtime Files
+runtime/
