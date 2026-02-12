@@ -36,6 +36,7 @@ ENV/
 .env
 configs/secrets.yaml
 configs/settings.yaml
+configs/soul.yaml
 
 # Logs
 logs/*.log
