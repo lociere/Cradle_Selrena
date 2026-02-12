@@ -31,9 +31,11 @@ class LlamaCppEmbeddedBackend(BaseBrainBackend):
                 "pip install llama-cpp-python (推荐配合 GPU 使用)"
             )
 
-        model_path = self.config.local_model_path
+        # 使用 ModelManager 统一解析/验证模型路径（本地优先；不自动下载）
+        from cradle.core.model_manager import global_model_manager
+        model_path = global_model_manager.resolve_model_path(self.config.local_model_path, auto_download=False)
         if not os.path.exists(model_path):
-             raise FileNotFoundError(f"[Local Backend] 模型文件未找到: {model_path}")
+            raise FileNotFoundError(f"[Local Backend] 模型文件未找到: {model_path} — 请使用 ModelManager 下载或在配置中提供正确路径")
 
         logger.info(f"[Local Backend] 正在加载神经网络权重... (GPU Layers: {self.config.n_gpu_layers})")
         

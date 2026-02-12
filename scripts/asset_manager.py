@@ -79,8 +79,8 @@ ASSETS = {
 # 🛠️ 核心逻辑
 # ==========================================
 
-def get_base_dir():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from cradle.utils.path import ProjectPath
+
 
 def ensure_dir(path):
     if not os.path.exists(path):
@@ -178,13 +178,12 @@ def process_asset(key, config, args):
     info = config["variants"][variant_key]
     print(f"   📋 选定版本: {variant_key} ({info['description']})")
     
-    # 准备路径
-    base_dir = get_base_dir()
-    target_parent = os.path.join(base_dir, config["target_dir"])
+    # 准备路径（使用 ProjectPath 工具）
+    target_parent = str(ProjectPath.ASSETS_MODELS)
     ensure_dir(target_parent)
-    
-    target_path = os.path.join(target_parent, info["local_name"])
-    
+
+    target_path = str(ProjectPath.get_model_path(info["local_name"]))
+
     # 检查是否存在
     exists = os.path.exists(target_path)
     if exists and not args.force:
