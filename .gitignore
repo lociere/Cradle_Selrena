@@ -1,69 +1,141 @@
-# Python
+# -------------------------
+# Python - common
+# -------------------------
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
 downloads/
-eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
+pip-wheel-metadata/
+pip-delete-this-directory.txt
 
-# Runtime Data
+# -------------------------
+# Virtual environments
+# -------------------------
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+
+# -------------------------
+# Runtime / data / caches
+# -------------------------
 data/cache/
 data/memoey/
 data/memory/
 data/temp/
 !data/README.txt
-
-# Virtual Environment
-.venv/
-venv/
-ENV/
-
-# Environment and Secrets
+.cache/
+.pyre/
+.mypy_cache/
+__pypackages__/
 .env
+*.env
+.env.*
+.runtime/
+.runtime-*/
+
+# -------------------------
+# Secrets & configs
+# -------------------------
 configs/secrets.yaml
 configs/settings.yaml
 configs/soul.yaml
+secrets.*
+*.key
+*.pem
 
-# Logs
+# -------------------------
+# Logs & coverage
+# -------------------------
 logs/*.log
 *.log
+coverage.xml
+.coverage
+.coverage.*
+htmlcov/
+pytestdebug.log
 
-# IDE
+# -------------------------
+# Test artifacts
+# -------------------------
+.pytest_cache/
+tests/__pycache__/
+tests/temp/
+.hypothesis/
+
+# -------------------------
+# Notebooks
+# -------------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# -------------------------
+# Databases
+# -------------------------
+*.sqlite3
+*.db
+*.db-journal
+
+# -------------------------
+# IDEs / editors
+# -------------------------
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*~
 
-# OS
+# -------------------------
+# OS files
+# -------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Project Specific
+# -------------------------
+# Project specific / assets
+# -------------------------
 assets/models/*
 !assets/models/.gitkeep
 assets/sounds/*
 !assets/sounds/.gitkeep
 assets/images/*
 !assets/images/.gitkeep
-tests/__pycache__/
-tests/temp/
+assets/**/tmp/
+assets/**/.cache/
+
+# Keep pytest metadata files tracked (README & CACHEDIR.TAG)
+.pytest_cache/README.md
+.pytest_cache/CACHEDIR.TAG
+.pytest_cache/.gitignore
+
+# Scripts / build output
+scripts/output/
+dist/
+build/
 
 # Documentation
 docs/architecture/
 docs/operational/
 !docs/README.md
 
-# Runtime Files
+# Runtime files
 runtime/
+
+# -------------------------
+# Optional: ignore local model cache (uncomment if desired)
+# -------------------------
+# assets/models/*
+# !assets/models/.gitkeep
+
+# End of file
