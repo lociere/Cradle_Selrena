@@ -184,7 +184,7 @@ class AudioStream:
                 source="Ear"
             ))
         except Exception as e:
-            self.logger.error(f"ASR Task Failed: {e}")
+            self.logger.error(f"ASR 任务失败：{e}")
 
     async def listen_loop(self):
         """启动监听 (替代旧的方法名)"""

@@ -39,6 +39,11 @@ class LLMConfig(BaseModel):
         default=4096,
         description="[Local] 上下文窗口大小"
     )
+    # 控制本地模型是否允许自动从远端下载（默认关闭，出于安全与合规考虑）
+    auto_download: bool = Field(
+        default=False,
+        description="是否允许在本地模型缺失时自动从远端仓库下载（本地 LLM 推荐关闭）"
+    )
 
     # --- Common Configs ---
     temperature: float = Field(

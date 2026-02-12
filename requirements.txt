@@ -53,6 +53,7 @@ sounddevice==0.5.5
 # AI and ML dependencies
 chromadb==0.3.26
 sentence-transformers==2.2.2
+tokenizers==0.22.2
 transformers==4.33.0
 torch>=2.0.0
 huggingface-hub==0.20.0

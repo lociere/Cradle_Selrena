@@ -1,18 +1,6 @@
 [
   {
     "role": "user",
-    "content": "晚上好，小月。",
-    "timestamp": 1770868908.817779,
-    "metadata": {}
-  },
-  {
-    "role": "assistant",
-    "content": "晚上好。你今天好像特别执着于打招呼呢。",
-    "timestamp": 1770868912.395973,
-    "metadata": {}
-  },
-  {
-    "role": "user",
     "content": "小月，晚上好。",
     "timestamp": 1770868923.516271,
     "metadata": {}
@@ -93,6 +81,42 @@
     "role": "assistant",
     "content": "这个问题……让我想想。可能会选一件看起来最普通的连衣裙吧。毕竟太过华丽的衣服反而会让人忽略穿着者本身呢。",
     "timestamp": 1770869464.866685,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "你好。",
+    "timestamp": 1770909146.405442,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "你好。你今天好像又特别执着于打招呼呢。",
+    "timestamp": 1770909147.881583,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "没什么我这个月界说话。",
+    "timestamp": 1770909151.447996,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "这样啊。那这个月你是不是要憋很多话？不过没关系，憋到最后爆发出来应该也很有趣。",
+    "timestamp": 1770909152.595651,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "你会写helloword吗？",
+    "timestamp": 1770909161.89659,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "当然可以。H-E-L-L-O-W-O-R-L-D，看起来就像是在玩拼字游戏一样。",
+    "timestamp": 1770909163.850972,
     "metadata": {}
   }
 ]

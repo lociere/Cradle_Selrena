@@ -44,7 +44,7 @@ class FunASRClient:
             try:
                 self.load_model()
             except Exception as e:
-                self.logger.error(f"FunASR Auto-Load failed: {e}")
+                self.logger.error(f"FunASR 自动加载失败：{e}")
         
         self._initialized = True
 
@@ -96,7 +96,7 @@ class FunASRClient:
         :return: 识别文本
         """
         if not self._is_ready or self.model is None:
-            self.logger.warning("FunASR model not ready.")
+            self.logger.warning("FunASR 模型尚未就绪。")
             return ""
 
         try:
@@ -123,7 +123,7 @@ class FunASRClient:
             try:
                 results = self.model.generate(**infer_kwargs)
             except Exception as e:
-                self.logger.error(f"ASR Inference Error: {e}")
+                self.logger.error(f"ASR 推理失败：{e}")
                 return ""
             
             # 解析结果

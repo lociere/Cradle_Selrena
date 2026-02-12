@@ -70,6 +70,13 @@ class MemoryConfig(BaseModel):
     vector_store_path: str = "./data/vector_store"
 
 
+class ModelManagerConfig(BaseModel):
+    """全局模型管理策略"""
+    auto_download: bool = Field(default=False, description="全局自动下载模型的开关（安全默认：关闭）")
+    size_threshold_mb: int = Field(default=10, description="判断单文件是否为有效权重的最小大小（MB）")
+    whitelist: list[str] = Field(default_factory=list, description="允许自动下载的模型仓库白名单（空表示无限制）")
+
+
 class SystemSettings(BaseModel):
     """
     系统级配置根节点 (Infrastructure)
@@ -79,3 +86,4 @@ class SystemSettings(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     perception: PerceptionConfig = Field(default_factory=PerceptionConfig)
     presentation: PresentationConfig = Field(default_factory=PresentationConfig)
+    model_manager: ModelManagerConfig = Field(default_factory=ModelManagerConfig)

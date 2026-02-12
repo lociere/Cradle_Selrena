@@ -29,13 +29,12 @@ def async_retry(
                     last_exception = e
                     if attempt < retries:
                         logger.warning(
-                            f"Execution of {func.__name__} failed: {e}. "
-                            f"Retrying in {current_delay:.2f}s... ({attempt + 1}/{retries})"
+                            f"执行 {func.__name__} 时失败：{e}。将在 {current_delay:.2f}s 后重试（{attempt + 1}/{retries}）"
                         )
                         await asyncio.sleep(current_delay)
                         current_delay *= backoff
                     else:
-                        logger.error(f"Max retries reached for {func.__name__}. Error: {e}")
+                        logger.error(f"达到最大重试次数：{func.__name__}，错误：{e}")
             
             if last_exception:
                 raise last_exception
@@ -51,7 +50,7 @@ async def run_in_background(coro):
         try:
             await coro
         except Exception as e:
-            logger.exception(f"Background task failed: {e}")
+            logger.exception(f"后台任务异常：{e}")
             
     asyncio.create_task(wrapper())
 
@@ -73,4 +72,4 @@ class Timer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         import time
         elapsed = (time.perf_counter() - self.start) * 1000
-        logger.debug(f"[{self.name}] took {elapsed:.2f}ms")
+        logger.debug(f"[{self.name}] 耗时 {elapsed:.2f}ms")

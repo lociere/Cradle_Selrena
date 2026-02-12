@@ -25,14 +25,29 @@ class ModelManager:
     def __init__(self):
         if self._initialized:
             return
-            
+
         self.logger = logger
         # 定义沙盒路径 (仅用于捕获库产生的临时文件，不再作为主要存储)
         self.hub_cache_sandbox = ProjectPath.DATA_CACHE / "hub_sandbox"
-        
+
+        # 从 SystemSettings 尝试读取全局策略（若 ConfigManager 尚未初始化则忽略）
+        self.default_auto_download = False
+        self.weight_size_threshold_mb = 10
+        self.whitelist = []
+        try:
+            # 延迟导入，避免循环依赖在包导入阶段出现问题
+            from cradle.core.config_manager import global_config
+            sys_mm = global_config.get_system().model_manager
+            self.default_auto_download = bool(sys_mm.auto_download)
+            self.weight_size_threshold_mb = int(sys_mm.size_threshold_mb)
+            self.whitelist = list(sys_mm.whitelist or [])
+        except Exception:
+            # 忽略：使用默认值
+            pass
+
         # 注入环境变量 (构建防污染围栏)
         self._setup_sandbox()
-        
+
         self._initialized = True
 
     def _setup_sandbox(self):
@@ -60,7 +75,11 @@ class ModelManager:
             path_obj = Path(model_identifier)
             if path_obj.exists():
                 return str(path_obj.resolve())
-            self.logger.warning(f"Configured absolute path not found: {model_identifier}")
+            # 如果配置的是绝对路径但目标不存在，不要将绝对路径当作远端 repo_id 直接传递给下载器。
+            # 回退策略：尝试使用路径的 basename 作为仓库名（例如 D:/.../m3e-small -> m3e-small），并记录决策。
+            self.logger.warning(f"Configured absolute path not found: {model_identifier} — will try basename '{path_obj.name}' as repo id for auto-download if allowed")
+            # 用 basename 替换 model_identifier，以便后续的自动下载尝试使用正确的 repo id 格式
+            model_identifier = path_obj.name
 
         # 2. 构造标准的静态资源路径
         # 规则: 提取 ID 的最后一部分作为本地目录名
@@ -82,13 +101,33 @@ class ModelManager:
                 else:
                     local_asset_path.unlink(missing_ok=True)
 
-        # 4. 自动安装流程
-        if auto_download:
+        # 4. 自动安装流程（受限于全局策略与白名单）
+        effective_auto_download = bool(auto_download if auto_download is not None else self.default_auto_download)
+        # 白名单检查（若启用）
+        whitelist_allowed = True
+        if self.whitelist:
+            whitelist_allowed = any(w in model_identifier for w in self.whitelist)
+            if not whitelist_allowed:
+                effective_auto_download = False
+
+        # 结构化日志：决策原因（本地/自动下载/白名单）
+        self.logger.debug(
+            "[ModelManager][resolve] decision",
+            extra={
+                "model_id": model_identifier,
+                "local_path": str(local_asset_path),
+                "exists": local_asset_path.exists(),
+                "auto_download_requested": bool(auto_download),
+                "effective_auto_download": effective_auto_download,
+                "whitelist_configured": bool(self.whitelist),
+                "whitelist_allowed": whitelist_allowed,
+            },
+        )
+
+        if effective_auto_download:
             try:
                 return self._install_from_hub(model_identifier, local_asset_path)
             except Exception:
-                # 安装失败时，如果是单纯的网络问题，或许可以让上层库自己重试，或者直接抛出异常
-                # 这里我们选择向上传递异常，确保启动流程感知到错误
                 raise
 
         # 5. 最后的兜底 (返回原始 ID，听天由命)
@@ -117,22 +156,48 @@ class ModelManager:
         if (model_path / ".complete").exists():
             return True
 
-        # 2. 深度扫描: 寻找核心权重文件
+        # 2. 深度扫描: 寻找核心权重文件 + 检查模型格式（transformers / sentence-transformers）
         # 定义可能的权重文件后缀
         weight_suffixes = {'.pt', '.bin', '.safetensors', '.onnx', '.engine', '.model'}
         valid_weights_found = False
+        min_size_bytes = int(self.weight_size_threshold_mb) * 1024 * 1024
         
         try:
             # 遍历一级目录 (通常权重在根目录)
-            # 兼容性: 某些情况下(git clone), 可能会有多级目录，但通常 Snapshot Download 都在根下
             for file in model_path.iterdir():
                 if file.is_file() and file.suffix in weight_suffixes:
-                    # 宽松检查: > 10MB 即视为有效权重 (避免只是个占位符)
-                    if file.stat().st_size > 10 * 1024 * 1024: 
+                    # 使用可配置的大小阈值进行判断，避免只是个占位符
+                    if file.stat().st_size > min_size_bytes:
                         valid_weights_found = True
                         break
         except Exception:
             pass # 权限问题等
+
+        # 额外格式验证：检查 config.json 中是否包含 transformers 所需的 model_type
+        # 或者目录中存在 sentence-transformers 的特征文件（sentence_bert_config.json）
+        try:
+            cfg_json = model_path / 'config.json'
+            sbt_cfg = model_path / 'sentence_bert_config.json'
+            if sbt_cfg.exists():
+                # 明确为 sentence-transformers 包装模型
+                return True
+            if cfg_json.exists():
+                try:
+                    import json
+                    data = json.loads(cfg_json.read_text(encoding='utf-8'))
+                    if 'model_type' in data or 'architectures' in data:
+                        # transformers 可识别的配置
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 如果找到了有效权重，但未通过格式检查，仍视为无效（触发重装）
+        if valid_weights_found:
+            # 若权重存在但无有效模型描述文件，认为不完整（可能来自不兼容源）
+            self.logger.warning(f"Weights found in {model_path} but no compatible model config detected.")
+            return False
             
         # 3. 结果判定与自动维护
         if valid_weights_found:
@@ -169,39 +234,44 @@ class ModelManager:
         # 确保父目录存在
         target_dir.parent.mkdir(parents=True, exist_ok=True)
         
+        # 结构化日志：开始安装尝试（包含目标目录与策略）
+        self.logger.info("[ModelManager][install] start", extra={
+            "model_id": model_id,
+            "target_dir": str(target_dir),
+        })
+
+        last_err = None
+        # 首选尝试 ModelScope（如果可用），失败则回退到 HuggingFace
         try:
-            # 延迟导入，无需强制依赖
-            from modelscope import snapshot_download
-            
-            # 使用 local_dir 参数强制下载到指定目录，而不是缓存目录
-            download_path = snapshot_download(
-                model_id=model_id, 
-                local_dir=str(target_dir),
-                # 忽略一些非必要文件，保持目录整洁 (视情况而定)
-                # ignore_file_pattern=[".git", "*.md"] 
-            )
-            
-            # 下载成功后，生成完成标记
+            from modelscope import snapshot_download as ms_snapshot
+            self.logger.debug("[ModelManager][install] trying source", extra={"source": "modelscope", "model_id": model_id})
+            download_path = ms_snapshot(model_id=model_id, local_dir=str(target_dir))
             try:
                 (target_dir / ".complete").touch()
             except Exception as e:
                 self.logger.warning(f"Failed to create marker file: {e}")
-
-            self.logger.info(f"Successfully installed: {model_id}")
+            self.logger.info("[模型管理器][安装成功]", extra={"source": "modelscope", "model_id": model_id, "path": str(download_path)})
             return str(download_path)
-            
-        except ImportError:
-            self.logger.error("ModelScope library not found. Cannot auto-install model.")
-            raise RuntimeError("Missing dependency: modelscope")
         except Exception as e:
-            self.logger.error(f"Failed to install model '{model_id}': {e}")
-            
-            # 安装失败时清理可能残留的文件，防止下次误判
-            # 这里必须谨慎: 如果 target_dir 已经有部分文件，是否要全删?
-            # 既然是 _install_from_hub 失败，且目标是我们刚指定的目录，理应清理
+            last_err = e
+            self.logger.debug("[模型管理器][安装] ModelScope 下载失败", extra={"error": repr(e)})
+
+        # 回退到 HuggingFace snapshot_download（如果 huggingface_hub 可用）
+        try:
+            from huggingface_hub import snapshot_download as hf_snapshot
+            self.logger.debug("[模型管理器][安装] 尝试来源", extra={"source": "huggingface", "model_id": model_id})
+            hf_snapshot(repo_id=model_id, local_dir=str(target_dir), local_dir_use_symlinks=False, resume_download=True)
+            try:
+                (target_dir / ".complete").touch()
+            except Exception:
+                pass
+            self.logger.info("[模型管理器][安装成功]", extra={"source": "huggingface", "model_id": model_id, "path": str(target_dir)})
+            return str(target_dir)
+        except Exception as e2:
+            self.logger.error("[ModelManager][install] all sources failed", extra={"model_id": model_id, "error": repr(e2), "last_err": repr(last_err)})
             if target_dir.exists():
                 shutil.rmtree(target_dir, ignore_errors=True)
-            raise e
+            raise RuntimeError(e2)
 
     def ensure_model_downloaded(self, model_id: str):
         """显式触发模型下载"""

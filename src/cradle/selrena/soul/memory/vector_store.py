@@ -75,6 +75,13 @@ class MemoryVessel:
             model_name_or_path = cfg_memory.get("hf_repo", "moka-ai/m3e-small")
 
         source = "local" if os.path.isdir(str(model_name_or_path)) else "remote"
+        # 结构化日志：记录配置、决策与解析结果
+        self.logger.info("[MemoryVessel][model] resolved", extra={
+            "configured_path": configured_path,
+            "auto_download": auto_download,
+            "resolved_path": str(model_name_or_path),
+            "source": source
+        })
         self.logger.info(f"[MemoryVessel] 加载 Embedding 模型: {os.path.basename(str(model_name_or_path))} (Force CPU) -> source: {source}")
         # 使用 ConfigManager 动态获取模型路径；若本地模型缺失权重，则回退到 HF 远程或尝试自动下载
 
