@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 class LLMConfig(BaseModel):
     """LLM 调用参数（支持云端API与本地内嵌模式）"""
@@ -199,6 +199,10 @@ class SoulConfig(BaseModel):
     mock_response: str = Field(
         default="我听见你的心跳了呢~ 今天想和Selrena聊什么呀？",
         description="情感模拟模式回复模板（{user} 可替换用户输入片段）"
+    )
+    memory: Dict[str, Any] = Field(
+        default_factory=lambda: {"enabled": True, "model_path": ""},
+        description="长期记忆模块的配置，包括是否启用和模型路径"
     )
     
     @property

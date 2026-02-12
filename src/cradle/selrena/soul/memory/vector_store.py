@@ -36,11 +36,10 @@ class MemoryVessel:
         self.persist_dir = os.path.join(os.getcwd(), "data", "memory", "vector_store")
         self._embed_model = None
         self._is_ready = False
+
+        # 添加开关功能
+        self.memory_enabled = global_config.get_soul().memory.get("enabled", True)
         
-        # 1. 初始化 ChromaDB (持久化模式) - 轻量级操作
-        # moved from init to keep instantiation fast, 
-        # but Chroma client init is relatively fast so we can keep it or move it.
-        # Let's move it to initialize to be safe.
         self._client = None
         self.episodic_collection = None
         self.skill_collection = None
@@ -50,7 +49,7 @@ class MemoryVessel:
 
     def initialize(self):
         """【同步阻塞】显式初始化 (加载模型与数据库)"""
-        if self._is_ready:
+        if self._is_ready or not self.memory_enabled:
             return
 
         self.logger.info(f"[MemoryVessel] 正在挂载记忆扇区...")
@@ -62,19 +61,35 @@ class MemoryVessel:
             self.skill_collection = self._get_collection("skill_memory")
         
         # 2. 初始化 Embedding 模型 (CPU Mode)
-        # 尝试定位本地模型
-        local_model_path = os.path.join(os.getcwd(), "assets", "models", "m3e-small")
-        model_name_or_path = local_model_path if os.path.exists(local_model_path) else "moka-ai/m3e-small"
-        
-        self.logger.info(f"[MemoryVessel] 加载 Embedding 模型: {os.path.basename(model_name_or_path)} (Force CPU)")
-        
+        # 使用 ModelManager 统一解析/验证/下载模型资源（避免重复实现）
+        from cradle.core.model_manager import global_model_manager
+
+        cfg_memory = global_config.get_soul().memory
+        configured_path = cfg_memory.get("model_path") or cfg_memory.get("hf_repo", "moka-ai/m3e-small")
+        auto_download = bool(cfg_memory.get("auto_download", False))
+
         try:
-            # device="cpu" 是关键!
-            # 临时屏蔽 transformers 的警告
+            model_name_or_path = global_model_manager.resolve_model_path(configured_path, auto_download=auto_download)
+        except Exception as e:
+            self.logger.warning(f"[MemoryVessel] ModelManager 解析/下载失败 ({configured_path}): {e}; 将退回到远端标识加载")
+            model_name_or_path = cfg_memory.get("hf_repo", "moka-ai/m3e-small")
+
+        source = "local" if os.path.isdir(str(model_name_or_path)) else "remote"
+        self.logger.info(f"[MemoryVessel] 加载 Embedding 模型: {os.path.basename(str(model_name_or_path))} (Force CPU) -> source: {source}")
+        # 使用 ConfigManager 动态获取模型路径；若本地模型缺失权重，则回退到 HF 远程或尝试自动下载
+
+
+
+
+
+
+
+
+        try:
             transformers_logging.set_verbosity_error()
             self._embed_model = SentenceTransformer(model_name_or_path, device="cpu")
-            transformers_logging.set_verbosity_warning() 
-            
+            transformers_logging.set_verbosity_warning()
+
             self._is_ready = True
             self.logger.info("[MemoryVessel] 记忆核心就绪 (0MB VRAM)")
         except Exception as e:
@@ -100,7 +115,7 @@ class MemoryVessel:
 
     def memorize_episode(self, text: str, metadata: Dict[str, Any] = None):
         """记录情节记忆 (对话摘要)"""
-        if not text:
+        if not text or not self.memory_enabled:
             return
             
         embedding = self._generate_embedding(text)
@@ -112,11 +127,10 @@ class MemoryVessel:
             documents=[text],
             metadatas=[metadata or {}]
         )
-        # self.logger.debug(f"[Memory] 已归档情节: {text[:20]}...")
 
     def recall_episode(self, query: str, n_results: int = 3) -> List[str]:
         """回忆情节 (相关对话)"""
-        if not query:
+        if not query or not self.memory_enabled:
             return []
             
         embedding = self._generate_embedding(query)
@@ -126,7 +140,6 @@ class MemoryVessel:
             n_results=n_results
         )
         
-        # Chroma 返回的是 [[doc1, doc2]] 这种结构
         if results and results["documents"]:
             return results["documents"][0]
         return []

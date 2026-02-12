@@ -63,8 +63,10 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 echo [!] 正在安装 Cradle_Selrena 核心组件...
 :: 安装项目依赖 (Editable模式)
 pip install -e .
-:: 补全语音与多媒体库
-pip install sounddevice webrtcvad-wheels funasr
+:: 补全所有依赖，包括记忆模块和多媒体库
+pip install -r requirements.txt
+pip install chromadb sentence-transformers transformers huggingface-hub llama-cpp-python torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+pip install edge-tts funasr sounddevice webrtcvad-wheels
 
 :: ---------------------------------------------------
 :: 5. 系统初始化

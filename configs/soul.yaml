@@ -91,3 +91,9 @@ persona:
 
     【绝对禁忌 (Strictly Forbidden)】
     {taboos}
+
+memory:
+  enabled: true                # 是否启用长期记忆功能
+  model_path: "D:/elise/Cradle_Selrena/assets/models/m3e-small"  # 本地模型目录（优先）
+  hf_repo: "moka-ai/m3e-small"   # 当本地缺失时尝试从 HuggingFace 加载的仓库名
+  auto_download: true           # 若为 true，则在本地缺失权重时尝试自动从 HF 下载到 model_path（可能占用大量磁盘）
