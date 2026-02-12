@@ -22,7 +22,7 @@ providers:
     max_tokens: 1024
   deepseek:
     provider: openai
-    api_key: sk-fb67a37744d24e0895e68aff0f5907dc
+    api_key: sk-xxxxxxxxxxxx
     base_url: https://api.deepseek.com
     model: deepseek-chat
     temperature: 0.6
