@@ -12,7 +12,7 @@ async def main():
     os.system('cls' if os.name == 'nt' else 'clear')
 
     print("===============================================================")
-    print("   系统唤醒序列: CRADLE PROJECT (代号: 月见)                   ")
+    print("   系统唤醒序列: CRADLE SELRENA (摇篮: 月见)                   ")
     print("===============================================================")
     print("")
     
