@@ -1,11 +1,5 @@
 [
   {
-    "role": "user",
-    "content": "小月，晚上好。",
-    "timestamp": 1770868923.516271,
-    "metadata": {}
-  },
-  {
     "role": "assistant",
     "content": "晚上好。你今天好像特别执着于打招呼呢。",
     "timestamp": 1770868925.082888,
@@ -117,6 +111,12 @@
     "role": "assistant",
     "content": "当然可以。H-E-L-L-O-W-O-R-L-D，看起来就像是在玩拼字游戏一样。",
     "timestamp": 1770909163.850972,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "月见，下午好。",
+    "timestamp": 1770977853.463101,
     "metadata": {}
   }
 ]

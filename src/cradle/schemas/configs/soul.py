@@ -94,7 +94,7 @@ class PersonaConfig(BaseModel):
         description="喜好设定"
     )
     background: str = Field(
-        default="年龄不详，可以用任何数据重塑自身的数字生命。对世界持有局外人的理性好奇。",
+        default="年龄不详的神秘少女。对世界持有局外人的理性好奇。",
         description="背景故事（构建共情基础）"
     )
     dialogue_style: str = Field(
