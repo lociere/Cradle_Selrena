@@ -1,0 +1,17 @@
+# Direct dependencies for cradle-selrena
+# This file is used by pip-tools to generate a fully pinned requirements.lock
+
+pydantic>=2.0
+python-dotenv
+pyyaml
+loguru
+PySide6
+openai>=1.0
+langchain
+langgraph
+numpy
+pillow
+pyautogui
+edge-tts
+requests
+websockets>=11.0.3
