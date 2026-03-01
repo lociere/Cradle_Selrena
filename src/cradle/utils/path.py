@@ -85,7 +85,8 @@ class ProjectPath:
     DATA_MEMORY: Path = DATA_SELRENA / "memory"
     
     # Configs 核心文件路径
-    SOUL_CONFIG: Path = CONFIGS_DIR / "soul.yaml"   # 灵魂配置 (包含 Persona 与 LLM)
+    SOUL_DIR: Path = CONFIGS_DIR / "soul"           # 灵魂配置存储目录
+    VESSEL_DIR: Path = CONFIGS_DIR / "vessel"       # 容器（vessel）配置存储目录
     ENV_EXAMPLE: Path = PROJECT_ROOT / ".env.example"
 
     @classmethod
@@ -93,6 +94,8 @@ class ProjectPath:
         """初始化项目时，自动创建所有必要的目录"""
         dirs_to_create = [
             cls.CONFIGS_DIR,
+            cls.SOUL_DIR,
+            cls.VESSEL_DIR,
             cls.ASSETS_IMAGES,
             cls.ASSETS_SOUNDS,
             cls.ASSETS_MODELS,

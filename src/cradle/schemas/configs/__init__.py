@@ -7,7 +7,8 @@ from .system import (
     TTSConfig, 
     VTSConfig, 
     PresentationConfig,
-    MemoryConfig,
+    ModelManagerConfig,
+    NapcatConfig,
     SystemSettings
 )
 from .soul import LLMConfig, PersonaConfig, SoulConfig
@@ -21,7 +22,8 @@ __all__ = [
     "TTSConfig",
     "VTSConfig",
     "PresentationConfig",
-    "MemoryConfig",
+    "ModelManagerConfig",
+    "NapcatConfig",
     "SystemSettings",
     "LLMConfig",
     "PersonaConfig",

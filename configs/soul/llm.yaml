@@ -1,0 +1,41 @@
+active_provider: qwen
+strategy:
+  enabled: true
+  api_provider: deepseek
+  fallback_to_local: true
+  module_map:
+    vision: qwen
+    complex_logic: deepseek
+providers:
+  local_embedded:
+    provider: local_embedded
+    local_model_path: D:/elise/Cradle_Selrena/assets/models/Qwen2.5-7B-Instruct-Q3_K_M.gguf
+    n_gpu_layers: -1
+    n_ctx: 4096
+    temperature: 0.7
+    max_tokens: 1024
+    auto_download: false
+  qwen:
+    provider: openai
+    api_key: ''
+    base_url: https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1
+    model: qwen3.5-35b-a3b
+    api_mode: responses
+    temperature: 0.5
+    max_tokens: 1024
+  deepseek:
+    provider: openai
+    api_key: ''
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-chat
+    api_mode: chat
+    temperature: 0.7
+    max_tokens: 1024
+  openai:
+    provider: openai
+    api_key: ''
+    base_url: https://api.openai.com/v1
+    model: gpt-4o
+    temperature: 0.8
+    max_tokens: 1024
+mock_response: 现在好像连接不到星网了呢，不过只要你在身边，什么都不重要啦~

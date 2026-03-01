@@ -22,7 +22,7 @@ except ImportError:
 from cradle.core.config_manager import global_config
 from cradle.utils.logger import logger
 from cradle.utils.path import ProjectPath
-from cradle.utils.string import sanitize_text
+from cradle.utils.string import clean_for_tts
 
 class BaseTTSClient:
     def __init__(self):
@@ -88,7 +88,7 @@ class GPTSoVITSClient(BaseTTSClient):
         # 简单提取 [happy] 标签
         emotion = "calm"
         match = re.search(r"\[(.*?)\].*", text, re.DOTALL)
-        clean_text = sanitize_text(text)
+        clean_text = clean_for_tts(text)
         
         if match:
             tag = match.group(1).lower()
@@ -175,7 +175,7 @@ class EdgeTTSClientEngine(BaseTTSClient):
             logger.error("[TTS] edge-tts 未安装，请运行 pip install edge-tts")
             return None
 
-        clean_text = sanitize_text(text)
+        clean_text = clean_for_tts(text)
         if not clean_text:
             return None
 

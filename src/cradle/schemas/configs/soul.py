@@ -1,9 +1,9 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Dict, Optional, Any
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+from typing import Dict, Any, Literal
 
 class LLMConfig(BaseModel):
     """LLM 调用参数（支持云端API与本地内嵌模式）"""
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="ignore")
     
     provider: str = Field(
         default="openai",
@@ -24,6 +24,10 @@ class LLMConfig(BaseModel):
     model: str = Field(
         default="deepseek-chat",
         description="[OpenAI] 模型名称"
+    )
+    api_mode: Literal["chat", "responses"] = Field(
+        default="chat",
+        description="[OpenAI] 调用模式：chat=Chat Completions，responses=OpenAI Responses API"
     )
 
     # --- Local Embedded Mode Configs ---
@@ -62,6 +66,7 @@ class PersonaConfig(BaseModel):
     """数字生命的核心身份定义（所有字段含精心设计的默认值）"""
     model_config = ConfigDict(
         frozen=True,  #  本质数据不可变（类型系统级保护）
+        extra="ignore",
         json_schema_extra={
             "description": "Selrena 本质配置：定义'我是谁'"
         }
@@ -147,14 +152,14 @@ class PersonaConfig(BaseModel):
 
 class BrainStrategyConfig(BaseModel):
     """混合动力大脑策略配置 (Hybrid Brain Strategy)"""
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="ignore")
     
     enabled: bool = Field(
         default=False,
         description="是否启用混合/API模式主开关"
     )
     api_provider: str = Field(
-        default="deepseek",
+        default="qwen",
         description="云端模式使用的 LLM 服务商 (对应 providers 中的 key)"
     )
     fallback_to_local: bool = Field(
@@ -162,17 +167,17 @@ class BrainStrategyConfig(BaseModel):
         description="当 API 调用失败时，是否自动降级回本地模型"
     )
     module_map: Dict[str, str] = Field(
-        default_factory=lambda: {"vision": "openai", "complex_logic": "deepseek"},
-        description="模块级路由映射 (module_name -> provider_key)。例如视觉强制走OpenAI，复杂逻辑走DeepSeek。"
+        default_factory=lambda: {"vision": "openai", "complex_logic": "qwen"},
+        description="模块级路由映射 (module_name -> provider_key)。例如视觉强制走OpenAI，复杂逻辑走Qwen。"
     )
 
 
 class SoulConfig(BaseModel):
     """灵魂交互策略"""
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="ignore")
     
     active_provider: str = Field(
-        default="deepseek", 
+        default="local_embedded",
         description="默认的首选 LLM 服务商 (通常是 local_embedded)"
     )
 
@@ -183,15 +188,39 @@ class SoulConfig(BaseModel):
 
     providers: Dict[str, LLMConfig] = Field(
         default_factory=lambda: {
+            "local_embedded": LLMConfig(
+                provider="local_embedded",
+                local_model_path="D:/elise/Cradle_Selrena/assets/models/Qwen2.5-7B-Instruct-Q3_K_M.gguf",
+                n_gpu_layers=-1,
+                n_ctx=4096,
+                temperature=0.7,
+                max_tokens=1024,
+                auto_download=False
+            ),
+            "qwen": LLMConfig(
+                provider="openai",
+                api_key="",
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                model="qwen-plus",
+                api_mode="responses",
+                temperature=0.7,
+                max_tokens=2048
+            ),
             "deepseek": LLMConfig(
+                provider="openai",
                 api_key="",
                 base_url="https://api.deepseek.com",
-                model="deepseek-chat"
+                model="deepseek-chat",
+                temperature=0.6,
+                max_tokens=2048
             ),
             "openai": LLMConfig(
+                provider="openai",
                 api_key="",
                 base_url="https://api.openai.com/v1",
-                model="gpt-3.5-turbo"
+                model="gpt-4o",
+                temperature=0.8,
+                max_tokens=1024
             )
         },
         description="LLM 服务商配置列表"
@@ -206,9 +235,37 @@ class SoulConfig(BaseModel):
         description="情感模拟模式回复模板（{user} 可替换用户输入片段）"
     )
     memory: Dict[str, Any] = Field(
-        default_factory=lambda: {"enabled": True, "model_path": ""},
+        default_factory=lambda: {
+            "enabled": True,
+            "model_path": "",
+            "hf_repo": "moka-ai/m3e-small",
+            "auto_download": True,
+            "provider_auto_download": False,
+        },
         description="长期记忆模块的配置，包括是否启用和模型路径"
     )
+
+    @model_validator(mode="after")
+    def _validate_provider_references(self):
+        """校验 provider 引用，避免配置拼写错误延迟到运行期。"""
+        if not self.providers:
+            raise ValueError("providers 不能为空。")
+
+        if self.active_provider not in self.providers:
+            raise ValueError(f"active_provider='{self.active_provider}' 不存在于 providers 中。")
+
+        if self.strategy.api_provider not in self.providers:
+            raise ValueError(f"strategy.api_provider='{self.strategy.api_provider}' 不存在于 providers 中。")
+
+        invalid_modules = {
+            module: provider
+            for module, provider in self.strategy.module_map.items()
+            if provider not in self.providers
+        }
+        if invalid_modules:
+            raise ValueError(f"strategy.module_map 存在无效 provider: {invalid_modules}")
+
+        return self
     
     @property
     def llm(self) -> LLMConfig:

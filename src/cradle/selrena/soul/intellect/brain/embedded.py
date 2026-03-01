@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from cradle.core.config_manager import global_config
 from cradle.schemas.configs.soul import LLMConfig
 from cradle.utils.logger import logger
-from . import BaseBrainBackend
+from .base import BaseBrainBackend
 
 # 懒加载：避免在模块导入时就检查依赖
 try:

@@ -1,0 +1,5 @@
+enabled: true
+model_path: ''
+hf_repo: moka-ai/m3e-small
+auto_download: true
+provider_auto_download: false

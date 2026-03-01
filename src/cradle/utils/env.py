@@ -1,7 +1,7 @@
 import sys
 import os
 import platform
-from typing import List, Any
+from typing import List, Optional
 
 """
 Cradle Selrena Environment Utility
@@ -57,14 +57,14 @@ IS_CONTAINER = os.path.exists('/.dockerenv') or os.path.exists('/run/secrets/kub
 # 4. 获取器工具 (Typed Getters)
 # -----------------------------------------------------------------------------
 
-def get_bool(key: str, default: bool = False) -> bool:
+def env_bool(key: str, default: bool = False) -> bool:
     """安全的从环境变量获取布尔值 (支持 yes/true/1 等变体)"""
     val = os.getenv(key)
     if val is None:
         return default
     return val.lower() in ("true", "1", "yes", "on", "enable")
 
-def get_int(key: str, default: int = 0) -> int:
+def env_int(key: str, default: int = 0) -> int:
     """安全的从环境变量获取整数"""
     val = os.getenv(key)
     if val is None:
@@ -74,20 +74,29 @@ def get_int(key: str, default: int = 0) -> int:
     except ValueError:
         return default
 
-def get_list(key: str, separator: str = ",", default: List[str] = None) -> List[str]:
+def env_float(key: str, default: float = 0.0) -> float:
+    """安全的从环境变量获取浮点值"""
+    val = os.getenv(key)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except ValueError:
+        return default
+
+
+def env_str(key: str, default: str = "") -> str:
+    """安全的从环境变量获取字符串（自动 strip）"""
+    val = os.getenv(key)
+    if val is None:
+        return default
+    return val.strip()
+
+
+def env_list(key: str, separator: str = ",", default: Optional[List[str]] = None) -> List[str]:
     """将环境变量按分隔符切分为列表"""
     val = os.getenv(key)
     if val is None:
         return default or []
     # 过滤空字符串并去除首尾空格
     return [item.strip() for item in val.split(separator) if item.strip()]
-
-# -----------------------------------------------------------------------------
-# 5. 兼容性接口 (Legacy Support)
-# -----------------------------------------------------------------------------
-
-def is_development() -> bool:
-    return IS_DEVELOPMENT
-
-def is_production() -> bool:
-    return IS_PRODUCTION

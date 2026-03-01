@@ -1,6 +1,6 @@
 import asyncio
 import functools
-from typing import Type, Tuple, Union, Callable
+from typing import Type, Tuple, Union, Callable, Awaitable
 from cradle.utils.logger import logger
 
 def async_retry(
@@ -41,23 +41,21 @@ def async_retry(
         return wrapper
     return decorator
 
-async def run_in_background(coro):
-    """
-    Fire-and-forget: 在后台运行协程，不阻塞当前流程
-    会自动捕获异常并记入日志，防止 Task 销毁时的警告
-    """
+def submit_background_task(coro: Awaitable, name: str = "background") -> asyncio.Task:
+    """提交后台协程任务并自动记录异常。"""
     async def wrapper():
         try:
             await coro
         except Exception as e:
-            logger.exception(f"后台任务异常：{e}")
-            
-    asyncio.create_task(wrapper())
+            logger.exception(f"后台任务异常({name})：{e}")
 
-class Timer:
+    return asyncio.create_task(wrapper(), name=name)
+
+
+class ExecutionTimer:
     """
     上下文管理器：用于测量代码块执行耗时
-    with Timer("LLM Inference"):
+    with ExecutionTimer("LLM Inference"):
         await llm.generate()
     """
     def __init__(self, name: str = "Operation"):

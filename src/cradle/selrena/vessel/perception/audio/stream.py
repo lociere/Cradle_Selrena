@@ -110,8 +110,12 @@ class AudioStream:
 
     def _process_speech(self, audio_bytes):
         """将音频片段提交给 ASR"""
+        # if ASR is disabled we simply drop the speech
+        if not self.config.asr.enabled:
+            return
+
         # 1. 过滤过短的音频 (小于 0.3秒 可能是杂音)
-        # 16k * 2bytes * 0.3s = 9600 bytes
+        # 16k * 2bytes * 0.3秒 = 9600 bytes
         if len(audio_bytes) < 9600:
              return
 
@@ -175,7 +179,8 @@ class AudioStream:
             # 保留中文、英文、数字，去除所有标点符号
             text_clean = re.sub(r'[^\w\s\u4e00-\u9fff]', ' ', text).lower()
 
-            # 逻辑移交: 原始文本直接上报给 Synapse 层 (Reflex & Cortex)
+            # 逻辑移交: 原始文本直接上报给 Synapse 层
+            # Layer2(Edge) 处理外围规整，Reflex 完成门控与意识流编排
             self.logger.debug(f"👂 Transcribed: {text_clean}")
         
             await global_event_bus.publish(BaseEvent(
@@ -188,6 +193,9 @@ class AudioStream:
 
     async def listen_loop(self):
         """启动监听 (替代旧的方法名)"""
+        if not self.config.enabled:
+            self.logger.info("AudioStream 已禁用，跳过麦克风监听。")
+            return
         self.loop = asyncio.get_running_loop()
         await self.start()
 

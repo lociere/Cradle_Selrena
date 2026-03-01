@@ -1,4 +1,3 @@
-import yaml
 import os
 import copy
 from pathlib import Path
@@ -6,10 +5,12 @@ from typing import Dict, Any, Callable, List, Tuple
 from cradle.schemas import SystemSettings, SoulConfig, AppConfig, LLMConfig, PersonaConfig
 from cradle.utils.logger import logger
 from cradle.utils.path import ProjectPath
-from dotenv import load_dotenv
+from cradle.utils.yaml_io import read_yaml, write_yaml
+from cradle.utils.dicts import set_by_path, merge_dicts, fill_defaults
+from cradle.core.env_config import env_settings
 
-# 加载 .env 环境变量文件，使其可用于 os.getenv
-load_dotenv()
+# ConfigManager 初始化时不再直接调用 load_dotenv，而是通过 env_settings 加载
+# load_dotenv() - Removed
 
 class ConfigManager:
     """
@@ -18,9 +19,48 @@ class ConfigManager:
     结构优化：
     分离系统基础配置 (SystemSettings) 与核心生命配置 (SoulConfig)。
     
-    1. SystemSettings: 对应 configs/settings.yaml (基础设施、驱动、APP行为)
-    2. SoulConfig:     对应 configs/persona.yaml (身份、记忆、认知模型)
+    1. SystemSettings: 对应 configs/settings.yaml + configs/vessel/*.yaml (基础设施、驱动、APP行为)
+    2. SoulConfig:     对应 configs/soul/*.yaml (身份、记忆、认知模型)
     """
+    SYSTEM_ROOT_FILE = "settings.yaml"
+
+    SYSTEM_MODULE_FILES: Dict[str, str] = {
+        "perception": "perception.yaml",
+        "presentation": "presentation.yaml",
+        "model_manager": "model_manager.yaml",
+        "napcat": "napcat.yaml",
+    }
+
+    SOUL_MODULE_FILES: Dict[str, str] = {
+        "persona": "persona.yaml",
+        "memory": "memory.yaml",
+    }
+
+    SOUL_ROOT_FILE = "llm.yaml"
+
+    # 环境变量映射：使用 src.cradle.core.env_config.EnvSettings 作为唯一来源
+    # 格式: (EnvSettings_Attribute, Config_Key_Path)
+    SYSTEM_ENV_MAPPINGS: tuple[tuple[str, str], ...] = (
+        ("SELRENA_APP_DEBUG", "app.debug"),
+        ("SELRENA_LOG_LEVEL", "app.log_level"),
+        ("SELRENA_NAPCAT_ENABLE", "napcat.enable"),
+        ("SELRENA_NAPCAT_ACCOUNT", "napcat.account"),
+        ("SELRENA_NAPCAT_TOKEN", "napcat.token"),
+        ("SELRENA_PERCEPTION_STRICT_WAKE_WORD", "perception.strict_wake_word"),
+        ("SELRENA_PERCEPTION_VISION_ENABLED", "perception.vision.enabled"),
+    )
+
+    SOUL_ENV_MAPPINGS: tuple[tuple[str, str], ...] = (
+        ("SELRENA_SOUL_ACTIVE_PROVIDER", "active_provider"),
+        ("SELRENA_SOUL_STRATEGY_ENABLED", "strategy.enabled"),
+        ("SELRENA_SOUL_STRATEGY_API_PROVIDER", "strategy.api_provider"),
+        ("SELRENA_SOUL_STRATEGY_FALLBACK_TO_LOCAL", "strategy.fallback_to_local"),
+    )
+
+
+    SOUL_PREFIXES = ("persona.", "providers.", "strategy.", "memory.")
+    SOUL_EXACT_KEYS = {"active_provider", "mock_response"}
+
     def __init__(self):
         self.config_dir = ProjectPath.CONFIGS_DIR
         self._observers: List[Callable[[], None]] = []
@@ -37,11 +77,6 @@ class ConfigManager:
         try:
             self._load_and_build()
             logger.debug(f"配置管理器初始化完成. 环境: {self.app.app_name} v{self.app.version}")
-            try:
-                pass
-                # logger.debug(f"已加载核心: {self.persona.name}")
-            except Exception:
-                pass
         except Exception as e:
             logger.critical(f"系统配置加载失败: {e}")
             raise
@@ -69,10 +104,6 @@ class ConfigManager:
     def get_soul(self) -> SoulConfig:
         return self.soul_config
 
-    def get(self) -> SystemSettings:
-        """获取当前系统配置 (Deprecated: prefer get_system or get_soul)"""
-        return self.sys_config
-
     def add_observer(self, callback: Callable[[], None]):
         """
         注册配置变更监听器。
@@ -85,25 +116,18 @@ class ConfigManager:
         """
         更新配置。智能判断属于 system 还是 soul。
         """
-        # 路由逻辑
-        is_soul_config = False
-        target_path = key_path
-
-        if key_path.startswith("soul."):
-            is_soul_config = True
-            target_path = key_path.replace("soul.", "", 1)
-        elif key_path.startswith("persona.") or key_path.startswith("providers."):
-            is_soul_config = True
+        target_path = self._normalize_key_path(key_path)
+        is_soul_config = self._is_soul_key(target_path)
         
         # 1. 预校验
         try:
             if is_soul_config:
                 test_raw = copy.deepcopy(self.raw_soul)
-                self._set_nested_value(test_raw, target_path, value)
+                set_by_path(test_raw, target_path, value)
                 SoulConfig(**test_raw)
             else:
                 test_raw = copy.deepcopy(self.raw_sys)
-                self._set_nested_value(test_raw, target_path, value)
+                set_by_path(test_raw, target_path, value)
                 SystemSettings(**test_raw)
         except Exception as e:
             logger.error(f"无效的配置值 '{value}' (Key: {key_path}): {e}")
@@ -140,37 +164,16 @@ class ConfigManager:
     # -------------------------------------------------------------------------
 
     def _load_and_build(self):
-        # --- 1. System Config (settings.yaml) ---
-        sys_raw = {}
-        self._merge_yaml(sys_raw, self.config_dir / "settings.yaml")
-        # Secrets 也可以覆盖系统配置 (如数据库密码)
-        self._merge_yaml(sys_raw, self.config_dir / "secrets.yaml")
-        
-        # --- 2. Soul Config (soul.yaml) ---
-        soul_raw = {}
-        # 读取 soul.yaml
-        soul_file_data = {}
-        if ProjectPath.SOUL_CONFIG.exists():
-            with open(ProjectPath.SOUL_CONFIG, 'r', encoding='utf-8') as f:
-                soul_file_data = yaml.safe_load(f) or {}
-        
-        # [MIGRATION] 智能判断：如果是旧的纯 PersonaConfig 结构（只有 name, role 等），需要包裹
-        if soul_file_data and "persona" not in soul_file_data and "providers" not in soul_file_data:
-            # 假设这是旧版只有 Persona 字段的文件
-            soul_raw["persona"] = soul_file_data
-        else:
-            # 是新的 SoulConfig 结构
-            self._deep_merge(soul_raw, soul_file_data)
+        # --- 1. System Config ---
+        sys_raw = self._build_system_raw()
 
-        # Secrets 覆盖 Soul (如 LLM API Key)
-        self._merge_yaml(soul_raw, self.config_dir / "secrets.yaml")
+        # --- 2. Soul Config ---
+        soul_raw = self._build_soul_raw()
 
-        # --- 3. Env Overrides ---
-        # System: SELRENA_APP_DEBUG -> app.debug
-        self._apply_env_overrides(sys_raw, prefix="SELRENA")
-        
-        # Soul: SELRENA_PERSONA_NAME -> persona.name
-        self._apply_env_overrides(soul_raw, prefix="SELRENA")
+        # --- 3. Env Overrides (From EnvSettings) ---
+        self._apply_env_settings(sys_raw, self.SYSTEM_ENV_MAPPINGS)
+        self._apply_env_settings(soul_raw, self.SOUL_ENV_MAPPINGS)
+        self._apply_api_keys_from_env(soul_raw)
         
         # --- 4. Build ---
         new_sys_obj = SystemSettings(**sys_raw)
@@ -185,39 +188,42 @@ class ConfigManager:
         # --- 6. Auto Sync System Settings ---
         self._sync_missing_keys_to_disk()
 
+    def _build_system_raw(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        self._merge_yaml(data, self.config_dir / self.SYSTEM_ROOT_FILE)
+
+        for root_key, filename in self.SYSTEM_MODULE_FILES.items():
+            self._merge_yaml(data, ProjectPath.VESSEL_DIR / filename, root_key=root_key)
+
+        # Secrets 也可以覆盖系统配置 (如数据库密码)
+        self._merge_yaml(data, self.config_dir / "secrets.yaml")
+        return data
+
+    def _build_soul_raw(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+
+        for root_key, filename in self.SOUL_MODULE_FILES.items():
+            self._merge_yaml(data, ProjectPath.SOUL_DIR / filename, root_key=root_key)
+
+        self._merge_yaml(data, ProjectPath.SOUL_DIR / self.SOUL_ROOT_FILE)
+
+        # Secrets 覆盖 Soul (如 LLM API Key)
+        self._merge_yaml(data, self.config_dir / "secrets.yaml")
+        return data
+
     def _save_to_source_file(self, key_path: str, value: Any):
         """
-        根据路径路由写入 settings.yaml 或 soul.yaml
+        根据路径路由写入 settings.yaml 或 soul 下对应的配置文件
         """
-        # 判定目标文件
-        is_soul = False
-        inner_key = key_path
-
-        if key_path.startswith("soul."):
-            is_soul = True
-            inner_key = key_path.replace("soul.", "", 1)
-        elif key_path.startswith("persona.") or key_path.startswith("providers.") or key_path == "active_provider":
-            is_soul = True
-        
-        target_file = ProjectPath.SOUL_CONFIG if is_soul else (self.config_dir / "settings.yaml")
-        
+        inner_key = self._normalize_key_path(key_path)
+        target_file, relative_key = self._resolve_persist_target(inner_key)
+            
         # 读取 -> 修改 -> 写入
-        data = {}
-        if target_file.exists():
-            with open(target_file, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+        data = read_yaml(target_file)
 
-        # 特殊处理：如果写入 SoulConfig 但文件是旧格式（纯 PersonaConfig），且我们在更新 Persona 字段
-        if is_soul and "persona" not in data and "providers" not in data and inner_key.startswith("persona."):
-            # 这是一个纯 Persona 文件，我们要更新 key="name" (from persona.name)
-            layout_key = inner_key.replace("persona.", "", 1)
-            self._set_nested_value(data, layout_key, value)
-        else:
-             self._set_nested_value(data, inner_key, value)
-        
-        target_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(target_file, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        # 写入
+        set_by_path(data, relative_key, value)
+        write_yaml(target_file, data)
 
     def _notify_observers(self):
         """通知所有注册的观察者配置已变更"""
@@ -232,129 +238,116 @@ class ConfigManager:
     # -------------------------------------------------------------------------
 
     def _sync_missing_keys_to_disk(self):
-        """仅同步 SystemSettings 到 settings.yaml"""
-        settings_path = self.config_dir / "settings.yaml"
+        """同步 SystemSettings 缺失键到 settings.yaml 与 vessel 子配置文件"""
+        settings_path = self.config_dir / self.SYSTEM_ROOT_FILE
         try:
             schema_defaults = SystemSettings().model_dump(mode='json')
-            
-            current_data = {}
-            if settings_path.exists():
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    current_data = yaml.safe_load(f) or {}
 
-            updated, final_data = self._fill_missing_defaults(current_data, schema_defaults)
+            vessel_keys = set(self.SYSTEM_MODULE_FILES.keys())
+            settings_defaults = {
+                key: val for key, val in schema_defaults.items() if key not in vessel_keys
+            }
 
-            if updated:
-                logger.info("检测到 settings.yaml 缺少新配置项，正在回填...")
-                settings_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(settings_path, 'w', encoding='utf-8') as f:
-                    yaml.dump(final_data, f, allow_unicode=True, sort_keys=False)
+            self._sync_defaults_to_file(settings_path, settings_defaults)
+
+            for root_key, filename in self.SYSTEM_MODULE_FILES.items():
+                module_defaults = schema_defaults.get(root_key, {})
+                self._sync_defaults_to_file(ProjectPath.VESSEL_DIR / filename, module_defaults)
         except Exception as e:
             logger.warning(f"自动同步配置失败: {e}")
 
-    def _fill_missing_defaults(self, current: dict, defaults: dict) -> Tuple[bool, dict]:
-        """
-        递归对比，将 defaults 中有但 current 中没有的键补入 current。
-        返回 (is_updated, new_dict)
-        """
-        updated = False
-        # 为了不破坏原有引用，我们操作 current 的引用（in-place modification 也可以，但逻辑上要注意）
-        # 这里直接修改 current 字典对象
-        
-        for key, default_val in defaults.items():
-            if key not in current:
-                # 情况A: 整个 key 缺失 -> 直接补全默认值
-                current[key] = default_val
-                updated = True
-            elif isinstance(default_val, dict) and isinstance(current.get(key), dict):
-                # 情况B: key 存在且都是字典 -> 递归检查子节点
-                sub_updated, _ = self._fill_missing_defaults(current[key], default_val)
-                if sub_updated:
-                    updated = True
-            # 情况C: key 存在但类型不匹配或是叶子节点 -> 尊重用户配置，不覆盖
-        
-        return updated, current
+    def _resolve_persist_target(self, key_path: str) -> Tuple[Path, str]:
+        soul_module_prefixes = {
+            "persona.": ProjectPath.SOUL_DIR / self.SOUL_MODULE_FILES["persona"],
+            "memory.": ProjectPath.SOUL_DIR / self.SOUL_MODULE_FILES["memory"],
+        }
+        for prefix, target_file in soul_module_prefixes.items():
+            if key_path.startswith(prefix):
+                return target_file, key_path.replace(prefix, "", 1)
+
+        if key_path.startswith("providers.") or key_path.startswith("strategy.") or key_path in self.SOUL_EXACT_KEYS:
+            return ProjectPath.SOUL_DIR / self.SOUL_ROOT_FILE, key_path
+
+        for root_key, filename in self.SYSTEM_MODULE_FILES.items():
+            prefix = f"{root_key}."
+            if key_path.startswith(prefix):
+                return ProjectPath.VESSEL_DIR / filename, key_path.replace(prefix, "", 1)
+
+        return self.config_dir / self.SYSTEM_ROOT_FILE, key_path
+
+    def _sync_defaults_to_file(self, path: Path, defaults: dict):
+        current_data = read_yaml(path)
+
+        updated, final_data = fill_defaults(current_data, defaults)
+        if not updated:
+            return
+
+        logger.info(f"检测到 {path.name} 缺少新配置项，正在回填...")
+        write_yaml(path, final_data)
 
     # -------------------------------------------------------------------------
     # 辅助方法 (Helpers)
     # -------------------------------------------------------------------------
 
-    def _merge_yaml(self, target: dict, path: Path):
+    def _merge_yaml(self, target: dict, path: Path, root_key: str = None):
         """读取并合并 YAML 文件到目标字典中"""
         if not path.exists():
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-                self._deep_merge(target, data)
+            data = read_yaml(path)
+            if root_key:
+                target_sub = target.setdefault(root_key, {})
+                merge_dicts(target_sub, data)
+            else:
+                merge_dicts(target, data)
         except Exception as e:
             logger.warning(f"读取配置 {path.name} 失败: {e}")
 
-    def _merge_soul_legacy(self, target: dict):
-        """(Deprecated) 专门处理旧版 Persona 配置文件的合并逻辑"""
-        path = ProjectPath.SOUL_CONFIG
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-                # 映射规则: 文件根节点 -> 配置树的 soul.persona 节点
-                soul = target.setdefault("soul", {})
-                self._deep_merge(soul.setdefault("persona", {}), data)
+    def _normalize_key_path(self, key_path: str) -> str:
+        """规范化配置路径，兼容 soul.xxx 的前缀写法。"""
+        return key_path.replace("soul.", "", 1) if key_path.startswith("soul.") else key_path
 
-    def _set_nested_value(self, d: dict, key_path: str, value: Any):
-        """
-        根据点分路径设置嵌套字典的值。
-        例如: "a.b.c" -> d['a']['b']['c'] = value
-        """
-        keys = key_path.split('.')
-        current = d
-        for k in keys[:-1]:
-            current = current.setdefault(k, {})
-        current[keys[-1]] = value
-
-    def _deep_merge(self, source: dict, dest: dict):
-        """
-        递归合并两个字典。
-        将 dest 中的内容合并到 source 中，如果是字典则递归合并，否则直接覆盖。
-        """
-        for key, value in dest.items():
-            if isinstance(value, dict) and key in source and isinstance(source[key], dict):
-                self._deep_merge(source[key], value)
-            else:
-                source[key] = value
-
-    def _apply_env_overrides(self, data: dict, prefix: str = "SELRENA"):
-        """
-        递归应用环境变量覆盖配置。
-        环境变量格式为：前缀_层级_键名 (例如 SELRENA_SOUL_LLM_TEMPERATURE)
-        """
-        for key, value in list(data.items()):
-            current_prefix = f"{prefix}_{key.upper()}"
-            if isinstance(value, dict):
-                self._apply_env_overrides(value, current_prefix)
-            else:
-                # 特殊字段的映射逻辑
-                if key == "api_key" and prefix.endswith("LLM"):
-                     # 优先尝试读取标准的 AI API KEY
-                     env_val = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-                     if env_val: data[key] = env_val
-                     continue
-
-                env_val = os.getenv(current_prefix)
-                if env_val is not None:
-                     # 简单的类型推断，将字符串转换为对应的 Python 类型
-                    if env_val.lower() == 'true': env_val = True
-                    elif env_val.lower() == 'false': env_val = False
-                    elif env_val.isdigit(): env_val = int(env_val)
-                    elif self._is_float(env_val): env_val = float(env_val)
-                    data[key] = env_val
-
-    def _is_float(self, s: str) -> bool:
-        """检查字符串是否为有效的浮点数"""
-        try:
-            float(s)
+    def _is_soul_key(self, key_path: str) -> bool:
+        """判断 key_path 是否属于 Soul 配置树。"""
+        if key_path in self.SOUL_EXACT_KEYS:
             return True
-        except ValueError:
-            return False
+        return key_path.startswith(self.SOUL_PREFIXES)
+
+    def _apply_env_settings(self, data: dict, mappings: tuple[tuple[str, str], ...]):
+        """从 EnvSettings 对象应用环境变量覆盖"""
+        for env_attr, target_path in mappings:
+            # 获取 Pydantic 设置中的值
+            val = getattr(env_settings, env_attr, None)
+            if val is not None:
+                try:
+                    set_by_path(data, target_path, val)
+                    # logger.trace(f"Env override: {env_attr} -> {target_path} = {val}")
+                except Exception as e:
+                    logger.warning(f"Failed to apply env setting {env_attr}: {e}")
+
+    def _apply_api_keys_from_env(self, soul_raw: dict):
+        """
+        专用：应用 API Key 覆盖 logic
+        从 EnvSettings 安全地读取 keys，并注入到 soul_raw 配置字典。
+        优于 secrets.yaml
+        """
+        providers = soul_raw.get("providers")
+        if not isinstance(providers, dict):
+            return
+
+        # 映射逻辑：Provider Name -> EnvSettings Attribute
+        # 这里硬编码映射逻辑是安全的，因为 env_settings 此处是 Source of Truth
+        key_mapping = {
+            "openai": env_settings.OPENAI_API_KEY,
+            "deepseek": env_settings.DEEPSEEK_API_KEY,
+            "qwen": env_settings.QWEN_API_KEY or env_settings.DASHSCOPE_API_KEY,
+        }
+
+        for provider_name, api_key in key_mapping.items():
+            if api_key and provider_name in providers:
+                if isinstance(providers[provider_name], dict):
+                    providers[provider_name]["api_key"] = api_key
+
 
 # 全局单例实例
 global_config = ConfigManager()

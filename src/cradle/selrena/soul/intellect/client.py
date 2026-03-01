@@ -1,4 +1,4 @@
-from cradle.utils.string import sanitize_text
+from cradle.utils.string import clean_for_dialogue, clean_asr_transcript
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.utils.logger import logger
 from cradle.selrena.soul.memory.short_term import ShortTermMemory
@@ -9,7 +9,6 @@ from cradle.schemas.protocol.events.action import SpeakAction
 from cradle.schemas.protocol.events import BaseEvent
 from .brain import BrainFactory
 import asyncio
-import re
 
 class SoulIntellect:
     """
@@ -33,10 +32,10 @@ class SoulIntellect:
         # 升级为持久化记忆系统
         self.memory = ShortTermMemory()
         
-        # 【架构升级】连接到感知皮层 (SensoryCortex) 的意识流
-        # input.user_message 是经过注意力过滤与多模态对齐的消息
+        # 【架构升级】连接到脊髓层编排后的意识流
+        # input.user_message 由 Reflex 决策并发布
         global_event_bus.subscribe("input.user_message", self._on_hear)
-        # 移除底层的 signal:woken_up，因为 Cortex 会决定是否传达信息
+        # 移除底层的 signal:woken_up，唤醒与上行由 Reflex 统一负责
         logger.info(f"灵魂 (Soul) 已苏醒，加载人格: {global_config.persona.name}")
         
     async def initialize(self):
@@ -62,8 +61,8 @@ class SoulIntellect:
         else:
             user_text = str(payload)
             
-        # [Sanitize Input] 清洗 SenseVoice 的特殊标签 (<|zh|>, <|emotion|>, etc.)
-        user_text = re.sub(r"<\|.*?\|>", "", user_text).strip()
+        # [Sanitize Input] 清洗 SenseVoice 等 ASR 输出中的特殊标签
+        user_text = clean_asr_transcript(user_text)
         if not user_text:
             return  # 忽略空语音
             
@@ -110,7 +109,7 @@ class SoulIntellect:
                 logger.debug(f"[soul]生成:{reply_text}")
                 
             # 使用独立文本清洗工具
-            reply_text = sanitize_text(reply_text)
+            reply_text = clean_for_dialogue(reply_text)
             
             # 3. 将自己的思考结果存入记忆 (Short Term)
             self.memory.add("assistant", reply_text)

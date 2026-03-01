@@ -24,7 +24,13 @@ class VirtualMouth:
     def __init__(self):
         self.bus = global_event_bus
         self.tts_client = None
-        self.tts_engine = global_config.get_system().presentation.tts.engine
+        tts_cfg = global_config.get_system().presentation.tts
+        self.tts_engine = tts_cfg.engine
+
+        if not tts_cfg.enabled:
+            logger.info("[Mouth] TTS 功能已禁用，表达器官处于静默状态。")
+            # 不再订阅任何事件
+            return
         
         # 1. 订阅表达动作 (来自 Soul/Mind)
         self.bus.subscribe("action.presentation.speak", self._on_speak_action)
