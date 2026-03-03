@@ -64,10 +64,16 @@ class PayloadSanitizer:
                 continue
             content = msg.content
             if isinstance(content, list):
-                has_image = any(
-                    isinstance(item, dict) and item.get("type") == "image_url"
-                    for item in content
-                )
+                # Fix: content items are likely Pydantic models (ImageContent), not dicts
+                has_image = False
+                for item in content:
+                    if isinstance(item, ImageContent):
+                        has_image = True
+                        break
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        has_image = True
+                        break
+                
                 if has_image:
                     last_visual_user_idx = idx
 
@@ -92,9 +98,11 @@ class PayloadSanitizer:
 
                 if idx == last_visual_user_idx and has_image and summary_text:
                     final_text = (
-                        f"{final_text}\n\n"
-                        f"【视觉信息摘要】\n{summary_text}\n\n"
-                        "请基于以上视觉信息回答用户。"
+                        f"{final_text}\n"
+                        "<visual_context>\n"
+                        f"{summary_text}\n"
+                        "</visual_context>\n"
+                        "(System Note: The description above is from the vision module analyzing the user's image.)"
                     )
 
                 new_msg.content = final_text

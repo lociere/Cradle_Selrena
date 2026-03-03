@@ -7,10 +7,16 @@ class PromptBuilder:
     @staticmethod
     def build_vision_extraction_prompt(last_user_msg: ChatMessage) -> List[ChatMessage]:
         """构建专门用于提取视觉特征的 Prompt"""
-        system_msg = ChatMessage(
-            role="system",
-            content="你是强大的视觉特征提取器。请客观描述图片中的内容、主体、关键元素（若有文字请提取OCR）。只输出视觉信息，不要以聊天助手语气回复。"
+        content = (
+            "<system_instruction>\n"
+            "You are a powerful vision feature extractor.\n"
+            "Objectively describe the image content, subjects, actions, and key elements.\n"
+            "If text is present, extract it via OCR.\n"
+            "Output ONLY the visual description in CHINESE.\n"
+            "Do NOT use conversational tone.\n"
+            "</system_instruction>"
         )
+        system_msg = ChatMessage(role="system", content=content)
         return [system_msg, last_user_msg]
 
     @staticmethod
@@ -26,10 +32,13 @@ class PromptBuilder:
     def build_memory_injection(relevant_memories: List[str]) -> ChatMessage:
         """构建记忆注入块"""
         memory_block = "\n".join([f"- {m}" for m in relevant_memories])
-        return ChatMessage(
-            role="system",
-            content=f"【闪回记忆 (相关历史)】\n{memory_block}\n(以上信息仅供参考，不一定与当前对话直接相关)"
+        content = (
+            "<memory_context>\n"
+            f"{memory_block}\n"
+            "</memory_context>\n"
+            "(System Note: Relevant past memories retrieved from database. Use as context if needed.)"
         )
+        return ChatMessage(role="system", content=content)
 
     @staticmethod
     def build_context_window(persona_prompt: ChatMessage, relevant_memories: List[str], chat_history: List[ChatMessage], final_content: Any) -> List[ChatMessage]:

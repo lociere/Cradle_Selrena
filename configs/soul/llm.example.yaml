@@ -1,10 +1,8 @@
 # ==============================================================================
 # Cradle Selrena - Soul Configuration (Brain & Cognition)
 # ==============================================================================
-# 配置文件逻辑：
-# 1. 核心是 "strategy" (大脑策略)。
-# 2. 核心思考者 (Thinking Brain) 由 "strategy.core_provider" 唯一指定。
-# 3. 感知专家 (The Senses) 由 "strategy.module_map" 指定。
+# Example Configuration of your LLM providers.
+# Copy this file to `llm.yaml` and fill in your actual settings.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -18,7 +16,7 @@ strategy:
 
   # === 核心大脑 (The Thinking Brain) ===
   # 无论何种模式，最终负责逻辑推理和对话生成的模型 ID。
-  core_provider: deepseek
+  core_provider: local_embedded
 
   # === 感知专家 (The Senses) - 仅 split_tasks 生效 ===
   # 将特定感知任务委派给最擅长的模型。如果未配置，将尝试让核心大脑直接处理。
@@ -39,54 +37,37 @@ providers:
   # --- [Local] 本地内嵌 Gemma (主力思考模型) ---
   local_embedded:
     provider: local_embedded
-    # 模型路径 (GGUF 格式)
+    # 模型路径 (GGUF 格式), 必须修改
     local_model_path: "D:/elise/Cradle_Selrena/assets/models/gemma-3-4b-it-Q5_K_M.gguf"
     
     # [Local Vision] 本地视觉投影器 (可选)
-    # 如果配置了此项，split_tasks 下即使云端视觉失败，本地也能看图。
     local_clip_model_path: "" 
-    # local_clip_model_path: "D:/elise/Cradle_Selrena/assets/models/mmproj-model-f16.gguf"
 
     # 性能参数
-    n_gpu_layers: -1       # -1 = 全部卸载到 GPU (推荐)
-    n_ctx: 8192            # 上下文窗口 (若 VRAM 不足可尝试降低至 4096)
-    n_batch: 2048         # [New] 批处理大小 (默认 512，调大可加速 Prompt 处理，建议 1024~2048)
-    flash_attn: true      # [New] Flash Attention (需特定构建支持，开启可显著加速且省显存，但可能导致启动失败)
+    n_gpu_layers: -1      # -1 = All layers on GPU
+    n_ctx: 8192           # Context Window
+    n_batch: 512          # Prompt Processing Batch Size
+    flash_attn: false     # Enable Flash Attention (Requires specific build)
     
-    temperature: 0.7       # 活跃度 (0.7 为均衡)
-    max_tokens: 1024        # 最大通过 tokens (短回复优化 latency)
-    auto_download: false   # 关闭自动下载
+    # 自动下载 (False for local GGUF)
+    auto_download: false
 
-  # --- [Cloud] 通义千问 VL (视觉专家) ---
+  # --- [Cloud] Qwen (Example Vision Provider) ---
   qwen:
     provider: openai
-    # [API Key] 阿里云 DashScope API Key
-    api_key: "sk-**************" 
+    api_key: "YOUR_API_KEY_HERE"  # 请替换为对应平台的 API Key
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model: "qwen-vl-plus"
-    api_mode: chat
-    temperature: 0.5
-    max_tokens: 1024
+    api_mode: "chat"
+    temperature: 0.7
+    max_tokens: 2048
 
-  # --- [Cloud] DeepSeek (纯文本备选) ---
+  # --- [Cloud] DeepSeek (Example Core Provider) ---
   deepseek:
     provider: openai
-    api_key: "sk-**************"
+    api_key: "YOUR_API_KEY_HERE"
     base_url: "https://api.deepseek.com"
     model: "deepseek-chat"
-    temperature: 0.6
-    max_tokens: 2048
-
-  # --- [Cloud] OpenAI GPT-4o (全能王 - 仅用于 single_multimodal 模式) ---
-  openai:
-    provider: openai
-    api_key: "sk-**************"
-    base_url: "https://api.openai.com/v1"
-    model: "gpt-4o"
-    temperature: 0.8
-    max_tokens: 2048
-
-# ------------------------------------------------------------------------------
-# 3. Other Settings (其他)
-# ------------------------------------------------------------------------------
-mock_response: "现在好像连接不到星网了呢，不过只要你在身边，什么都不重要啦~"
+    api_mode: "chat"
+    temperature: 0.7
+    max_tokens: 4096

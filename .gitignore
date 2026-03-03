@@ -46,8 +46,20 @@ __pypackages__/
 # -------------------------
 # Secrets & configs
 # -------------------------
-configs/secrets.yaml
-configs/settings.yaml
+# Ignore all actual configs
+configs/**/*.yaml
+configs/*.yaml
+configs/**/*.json
+configs/*.json
+configs/**/*.toml
+configs/*.toml
+
+# Allow example/template files
+!configs/**/*.example.yaml
+!configs/*.example.yaml
+!configs/**/*.example.json
+!configs/*.example.json
+!configs/**/README.md
 configs/soul.yaml
 secrets.*
 *.key

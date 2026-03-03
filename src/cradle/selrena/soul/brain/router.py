@@ -207,12 +207,17 @@ class HybridBrainRouter(BaseBrainBackend):
         try:
             logger.debug(f"[HybridBrain] Invoking Vision Expert ({vision_provider_name}) for transcription...")
             vision_summary = await self._transcribe_visual_content(messages, vision_backend)
+            if vision_summary:
+                logger.debug(f"=========== [Vision Expert Report] ===========\n{vision_summary}\n==============================================")
         except Exception as e:
             logger.warning(f"[HybridBrain] Vision transcription failed: {e}")
             # Fallback: Core takes over if multimodal
             if getattr(core_backend, "is_multimodal", False):
                  return await core_backend.generate(messages)
-            vision_summary = "（图片识别服务暂时不可用）"
+            
+            # [User Request] 视觉失败时直接忽略，不通过错误提示干扰对话
+            logger.info("[HybridBrain] Vision failed. Dropping visual context silently.")
+            vision_summary = ""
 
         # 3. Cognitive Processing (Inject Description into Context)
         logger.debug(f"[HybridBrain] Relaying transcribed context to Core ({core_provider_name})...")
