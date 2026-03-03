@@ -31,6 +31,7 @@ env.bak/
 data/cache/
 data/memoey/
 data/memory/
+data/selrena/
 data/temp/
 !data/README.txt
 .cache/
