@@ -14,6 +14,7 @@ class LifecycleComponent(Protocol):
     """
 
     async def cleanup(self): ...
+    async def stop(self): ...
 
 
 class LifecycleManager:
@@ -27,16 +28,32 @@ class LifecycleManager:
         self._components: List[LifecycleComponent] = []
         self._is_running = False
         self._shutdown_event = asyncio.Event()
+        self._default_shutdown_timeout = 10.0  # 每个组件的超时限制 (秒)
 
         # 监听系统级关闭信号
         global_event_bus.subscribe("system.shutdown", self._on_shutdown_signal)
+
+    async def __aenter__(self):
+        """支持 Async Context Manager"""
+        self._is_running = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """退出上下文时自动触发关闭"""
+        if exc_type:
+            logger.error(f"[Lifecycle] Context exit with error: {exc_val}")
+        await self.shutdown(reason="context_exit")
 
     def register(self, component: Any):
         """注册一个组件到生命周期管理"""
         # 检查组件是否有 cleanup 或 stop 方法
         if hasattr(component, "cleanup") or hasattr(component, "stop"):
-            self._components.append(component)
-            logger.debug(f"[Lifecycle] 已注册组件: {component.__class__.__name__}")
+            if component not in self._components:
+                self._components.append(component)
+                logger.debug(f"[Lifecycle] 已注册组件: {component.__class__.__name__}")
+            else:
+                logger.warning(
+                    f"[Lifecycle] 组件重复注册: {component.__class__.__name__}")
 
     async def unregister(self, component: Any):
         """
@@ -47,74 +64,83 @@ class LifecycleManager:
             name = component.__class__.__name__
             logger.info(f"[Lifecycle] 正在动态注销组件: {name}...")
 
-            try:
-                # 1. 触发清理
-                if hasattr(component, "cleanup"):
-                    if asyncio.iscoroutinefunction(component.cleanup):
-                        await component.cleanup()
-                    else:
-                        component.cleanup()
-                elif hasattr(component, "stop"):
-                    if asyncio.iscoroutinefunction(component.stop):
-                        await component.stop()
-                    else:
-                        component.stop()
-            except Exception as e:
-                logger.error(f"注销组件 {name} 失败: {e}")
+            await self._stop_component(component)
 
             # 2. 从列表移除
-            self._components.remove(component)
+            if component in self._components:
+                self._components.remove(component)
             logger.info(f"[Lifecycle] 组件 {name} 已安全移除。")
+        else:
+            logger.warning(
+                f"[Lifecycle] 尝试注销未注册组件: {getattr(component, '__class__', {}).get('__name__', 'Unknown')}")
 
     async def _on_shutdown_signal(self, event: BaseEvent):
         """接收到神经系统的关闭信号"""
-        reason = event.payload.get(
-            "reason", "unknown") if event.payload else "unknown"
+        reason = str(event.payload.get(
+            "reason", "unknown")) if event.payload else "unknown"
         logger.warning(f"收到关闭信号，原因: {reason}。正在启动优雅退出流程...")
-        await self.shutdown()
+        await self.shutdown(reason=reason)
 
     async def wait_for_shutdown(self):
         """阻塞直到接收到关闭信号"""
         self._is_running = True
-        await self._shutdown_event.wait()
+        logger.info("[Lifecycle] 系统主循环已就绪，等待终止信号...")
+        try:
+            await self._shutdown_event.wait()
+        except asyncio.CancelledError:
+            logger.warning("[Lifecycle] 主循环被取消")
+            await self.shutdown(reason="cancelled")
 
-    async def shutdown(self):
+    async def _stop_component(self, component: Any, timeout: float = 5.0):
+        """封装单个组件的停止逻辑，带超时保护"""
+        name = component.__class__.__name__
+        logger.info(f"正在停止: {name}...")
+
+        async def _do_stop():
+            if hasattr(component, "cleanup"):
+                if asyncio.iscoroutinefunction(component.cleanup):
+                    await component.cleanup()
+                else:
+                    component.cleanup()
+            elif hasattr(component, "stop"):
+                if asyncio.iscoroutinefunction(component.stop):
+                    await component.stop()
+                else:
+                    component.stop()
+
+        try:
+            await asyncio.wait_for(_do_stop(), timeout=timeout)
+            logger.info(f"已停止: {name}")
+        except asyncio.TimeoutError:
+            logger.error(f"停止组件 {name} 超时 ({timeout}s)! 可能会有资源泄漏。")
+        except Exception as e:
+            logger.error(f"停止组件 {name} 时发生错误: {e}")
+
+    async def shutdown(self, reason: str = "manual"):
         """执行关闭序列"""
-        if not self._is_running:
+        if not self._is_running and self._shutdown_event.is_set():
+            logger.debug("[Lifecycle] 系统已关闭，跳过重复关闭请求。")
             return
 
         self._is_running = False
-        logger.info("--- 正在执行系统停机序列 ---")
+        logger.info(f"--- 正在执行系统停机序列 (Reason: {reason}) ---")
 
         # 1. 逆序关闭组件 (遵循栈的原则：后进先出)
-        # 例如：先注册了 Memory，后注册了 Ear。
-        # 关闭时：先关 Ear (停止接收输入)，再关 Memory (保存数据)。
-        for component in reversed(self._components):
-            name = component.__class__.__name__
-            try:
-                logger.info(f"正在停止: {name}...")
+        # 复制列表以防修改
+        components_to_stop = list(reversed(self._components))
 
-                # 优先调用 cleanup (异步)，其次是 stop (同步/异步)
-                if hasattr(component, "cleanup"):
-                    if asyncio.iscoroutinefunction(component.cleanup):
-                        await component.cleanup()
-                    else:
-                        component.cleanup()
+        for component in components_to_stop:
+            # 使用较长的超时时间确保数据保存，但防止无限挂起
+            await self._stop_component(component, timeout=self._default_shutdown_timeout)
 
-                elif hasattr(component, "stop"):
-                    if asyncio.iscoroutinefunction(component.stop):
-                        await component.stop()
-                    else:
-                        component.stop()
-
-                logger.info(f"已停止: {name}")
-            except Exception as e:
-                logger.error(f"停止组件 {name} 时发生错误: {e}")
+        # Clear list
+        self._components.clear()
 
         logger.info("--- 系统已安全休眠 ---")
 
         # 释放 wait_for_shutdown 的阻塞
-        self._shutdown_event.set()
+        if not self._shutdown_event.is_set():
+            self._shutdown_event.set()
 
 
 # 全局生命周期实例

@@ -139,7 +139,26 @@ class SoulIntellect:
 
         # [Optimized] 既然 Message Schema 已规范化 content 字段，直接提取纯文本即可
         # 兼容 str 或 List[ContentBlock]，并自动处理提取逻辑
+        # extracting pure text also cleans up CQ codes now
         text = PayloadSanitizer.extract_pure_text(payload.get("content", ""))
+
+        # [Anti-Redundancy] 如果提取后文本为空，且没有明确的视觉组件（如 ImageContent），
+        # 说明这只是一个 [CQ:image] 占位符，应忽略，等待后续的 visual snapshot 事件。
+        has_visual_component = False
+        content_raw = payload.get("content", [])
+        if isinstance(content_raw, list):
+             for item in content_raw:
+                 # Check for dict type image_url or Pydantic ImageContent
+                 if isinstance(item, dict) and (item.get("type") == "image_url" or item.get("type") == "image"):
+                     has_visual_component = True
+                     break
+                 if hasattr(item, "type") and (item.type == "image_url" or item.type == "image"):
+                     has_visual_component = True
+                     break
+        
+        if not text and not has_visual_component:
+             logger.debug("[Soul] 忽略纯 CQ 码占位符消息，等待视觉事件...")
+             return
 
         user_id = str(payload.get("user_id", "unknown"))
         target_user_id = payload.get("user_id") if isinstance(

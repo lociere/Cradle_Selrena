@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List, Union
 
 from cradle.schemas.domain.chat import Message as ChatMessage
@@ -6,6 +7,17 @@ from cradle.schemas.domain.multimodal import ImageContent, TextContent
 
 class PayloadSanitizer:
     """负责清洗和格式化载荷数据，尤其是针对多模态与纯文本不同模型接口的适配"""
+
+    @staticmethod
+    def cleanup_cq_codes(text: str) -> str:
+        """
+        [Noise Reduction]
+        移除 OneBot/Napcat 的 CQ 码（如 [CQ:image,...]），只保留用户真实文本。
+        """
+        if not text:
+            return ""
+        # 匹配 [CQ:...] 模式并移除
+        return re.sub(r'\[CQ:[^\]]+\]', '', text).strip()
 
     @staticmethod
     def normalize_messages(
@@ -92,7 +104,16 @@ class PayloadSanitizer:
                         has_image = True
                     # Handle other types if necessary (Audio/Video handled as non-text for now)
 
-                final_text = " ".join(text_parts).strip()
+                # [Noise Reduction] 清理 CQ 码，避免干扰 LLM 或与 Vision Summary 冲突
+                clean_text_parts = [
+                    PayloadSanitizer.cleanup_cq_codes(p) for p in text_parts if p.strip()
+                ]
+                final_text = " ".join(clean_text_parts).strip()
+                
+                # 如果清理后为空且原本也没图片对象，但有CQ码被清除了 -> 说明这本身就是个图片占位符
+                # 如果 vision_summary 存在，说明我们其实已经处理了视觉部分（或者失败了）
+                # 此处保持为空即可，或者添加 generic placeholder
+
                 if has_image and not final_text:
                     final_text = "（用户发送了一张图片）"
 
@@ -114,9 +135,10 @@ class PayloadSanitizer:
     @staticmethod
     def extract_pure_text(content: Any) -> str:
         """从可能是多模态的 content 中提取纯文本用于纯文本场景"""
+        raw_text = ""
         if isinstance(content, str):
-            return content
-        if isinstance(content, list):
+            raw_text = content
+        elif isinstance(content, list):
             texts = []
             for item in content:
                 # 兼容 Pydantic Model (TextContent) 与 dict
@@ -127,8 +149,10 @@ class PayloadSanitizer:
                     if isinstance(text_val, str):
                         texts.append(text_val)
 
-            return " ".join(texts).strip()
-        return ""
+            raw_text = " ".join(texts).strip()
+
+        # [Safety] 清理 OneBot/Napcat 的 CQ 占位符以免污染上下文 (如 [CQ:image])
+        return PayloadSanitizer.cleanup_cq_codes(raw_text)
 
     @staticmethod
     def has_vision_payload(messages: List[ChatMessage]) -> bool:

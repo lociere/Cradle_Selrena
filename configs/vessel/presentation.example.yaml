@@ -1,7 +1,7 @@
 # Presentation Config Example
 # Copy to presentation.yaml
 tts:
-  enabled: true
+  enabled: false
   engine: edge-tts
   api_url: http://127.0.0.1:9880
   character_map_path: ./configs/voice_presets.json

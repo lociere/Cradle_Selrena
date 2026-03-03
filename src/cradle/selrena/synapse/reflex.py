@@ -1,8 +1,10 @@
 import re
 import time
+import asyncio
 from typing import Any, List
 
 from cradle.core.config_manager import global_config
+from cradle.core.lifecycle import global_lifecycle
 from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.schemas.protocol.events.reflex import ReflexSignal, ReflexType
 from cradle.selrena.synapse.event_bus import global_event_bus
@@ -29,7 +31,7 @@ class Reflex:
         # 硬编码的生存本能关键词
         self.wake_keywords_zh = [
             "月见", "赛琳娜", "色瑞娜", "瑟瑞娜", "塞琳娜", "赛琳",
-            "赛瑞娜", "萨琳娜", "你好", "@月见"
+            "赛瑞娜", "萨琳娜", "你好"
         ]
         self.wake_keywords_en = [
             "selrena", "serena", "salrena", "serina", "selina", "celina",
@@ -46,16 +48,69 @@ class Reflex:
             logger.info(
                 f"[Reflex] 使用宽松唤醒模式：唤醒后 {self.wake_timeout:.0f}s 内可免唤醒词。")
 
+        self.decay_task = None
         logger.info("脊髓反射中枢 (Reflex) 初始化...")
 
     async def initialize(self):
         # 订阅 Layer2 规整后的外围输入
         self.bus.subscribe("synapse.layer2.ingress", self.on_layer2_ingress)
+        # 将自身托管到全局生命周期管理器
+        global_lifecycle.register(self)
+
+        # 仅在非严格模式（宽松模式）下启动后台超时检查
+        if not self.strict_wake:
+             self.decay_task = asyncio.create_task(self._arousal_decay_loop())
 
     async def cleanup(self):
-        self.bus.unsubscribe_receiver(self)
+        # 主动注销（防止重复调用，虽然 LifecycleManager 会处理）
+        if hasattr(global_lifecycle, "unregister"):
+            # 注意：unregister 会调用 cleanup，但如果是在 shutdown 流程中调用的 cleanup，不需要再 unregister
+            # 因此这里留空，仅作为标准实现。实际注销逻辑由 LifecycleManager 控制。
+            pass
 
-    def _match_keywords(self, text: str, zh_list: List[str], en_list: List[str]) -> bool:
+        self.bus.unsubscribe_receiver(self)
+        if self.decay_task:
+            self.decay_task.cancel()
+            try:
+                await self.decay_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _arousal_decay_loop(self):
+        """后台任务：定期检查唤醒状态是否超时"""
+        logger.debug("[Reflex] 启动唤醒衰减监听...")
+        while True:
+            try:
+                await asyncio.sleep(1.0)
+                if not self.is_awake:
+                    continue
+
+                # 如果在唤醒状态，检查超时
+                current_time = time.time()
+                elapsed = current_time - self.last_wake_time
+                
+                if elapsed >= self.wake_timeout:
+                    self.is_awake = False
+                    logger.info(f"[Reflex] 💤 注意力自然耗尽 (空闲 {elapsed:.1f}s >= {self.wake_timeout}s) -> 意识休眠")
+                    
+                    # 发布状态变更通知
+                    await self.bus.publish(BaseEvent(
+                        name="state.arousal",
+                        payload={
+                            "is_awake": False,
+                            "has_wake_word": False,
+                            "strict_wake_word": self.strict_wake,
+                            "wake_timeout_sec": self.wake_timeout,
+                        },
+                        source="Reflex"
+                    ))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[Reflex] 衰减循环异常: {e}")
+                await asyncio.sleep(5.0)  # 防止死循环刷屏
+
+    def _match_keywords(self, text: str, zh_list: List[str], en_list: List[str]) -> bool:                                             
         text_clean = text.lower()
         if any(kw in text_clean for kw in zh_list):
             return True
