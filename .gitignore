@@ -60,8 +60,6 @@ configs/*.toml
 !configs/**/*.example.json
 !configs/*.example.json
 !configs/**/README.md
-configs/soul.yaml
-secrets.*
 *.key
 *.pem
 

@@ -1,6 +1,0 @@
-enable: true
-listen_port: 6200     # changed to avoid conflicts (e.g. SSH)
-token: "0927elise"  # optional, used for subprotocol validation
-
-# 注意：NapcatResponder 会在 Napcat 客户端初始化时自动安装，
-# 无需手动在配置中指定组件。
