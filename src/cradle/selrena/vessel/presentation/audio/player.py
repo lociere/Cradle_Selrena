@@ -6,6 +6,7 @@
 """
 
 from cradle.core.config_manager import global_config
+from cradle.core.lifecycle import global_lifecycle
 from cradle.schemas.protocol.events.action import SpeakAction
 from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.schemas.protocol.events.reflex import ReflexSignal, ReflexType
@@ -26,6 +27,7 @@ class VirtualMouth:
 
     def __init__(self):
         self.bus = global_event_bus
+        global_lifecycle.register(self)
         self.tts_client = None
         tts_cfg = global_config.get_system().presentation.tts
         self.tts_engine = tts_cfg.engine

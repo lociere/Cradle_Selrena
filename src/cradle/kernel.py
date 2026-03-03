@@ -71,16 +71,10 @@ async def boot_sequence():
             ear = SemanticEar()
 
         # 3. 注册生命周期
-        global_lifecycle.register(soul)    # Last OUT
-        global_lifecycle.register(edge)
-        global_lifecycle.register(reflex)
-        global_lifecycle.register(napcat)
-        if napcat_client_obj:
-            global_lifecycle.register(napcat_client_obj)
-        if mouth:
-            global_lifecycle.register(mouth)
-        if ear:
-            global_lifecycle.register(ear)     # First OUT
+        # [Optimization] 各个组件已在初始化时自行注册到 global_lifecycle，
+        # 实现了依赖倒置，无需在此处手动维护。
+        # 注册顺序即初始化顺序: Soul -> Reflex -> Edge -> Napcat -> Mouth -> Ear
+        # 销毁顺序(LIFO): Ear -> Mouth -> Napcat -> Edge -> Reflex -> Soul
 
     except Exception as e:
         logger.critical(f"内核启动失败: {e}")

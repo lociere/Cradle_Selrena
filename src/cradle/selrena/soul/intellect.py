@@ -10,6 +10,8 @@ from cradle.utils.logger import logger
 from cradle.utils.path import ProjectPath
 from cradle.utils.string import extract_emotion_and_clean_text
 
+
+from cradle.core.lifecycle import global_lifecycle
 from ..synapse.event_bus import global_event_bus as EventBus
 from ..vessel.perception.sensory_system import SensorySystem
 from .memory.short_term import ShortTermMemory
@@ -46,6 +48,7 @@ class SoulIntellect:
 
     async def initialize(self):
         logger.info(f"灵魂 ({self.config.persona.name}) 已苏醒...")
+        global_lifecycle.register(self)
 
         # --- [Phase 1: 记忆构建 (Memory Construction)] ---
         # 优先加载记忆系统，确保在核心思考启动前拥有基础上下文 (Context)。

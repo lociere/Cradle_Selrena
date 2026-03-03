@@ -1,6 +1,7 @@
 from typing import Any, List
 
 from cradle.core.config_manager import global_config
+from cradle.core.lifecycle import global_lifecycle
 from cradle.schemas.domain.multimodal import (AudioContent, ContentBlock,
                                               ImageContent, TextContent,
                                               VideoContent)
@@ -46,6 +47,7 @@ class Edge:
         - `perception.audio.transcription`: 监听语音转录/文本输入。
         - `perception.visual.snapshot`: 监听视觉快照输入。
         """
+        global_lifecycle.register(self)
         self.bus.subscribe("perception.audio.transcription",
                            self.on_peripheral_transcription)
         self.bus.subscribe("perception.visual.snapshot",

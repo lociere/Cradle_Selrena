@@ -14,6 +14,7 @@ import sounddevice as sd
 import webrtcvad
 
 from cradle.core.config_manager import global_config
+from cradle.core.lifecycle import global_lifecycle
 from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.selrena.vessel.perception.audio.asr_client import FunASRClient
@@ -29,6 +30,9 @@ class AudioStream:
 
     def __init__(self):
         self.logger = logger
+        # 注册自动管理
+        global_lifecycle.register(self)
+
         # 暂时手动获取 loop，因为 __init__ 可能不在 loop 运行的线程
         try:
             self.loop = asyncio.get_running_loop()
