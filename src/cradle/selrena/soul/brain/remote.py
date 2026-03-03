@@ -7,7 +7,7 @@ from cradle.schemas.domain.chat import Message as ChatMessage
 from cradle.utils.logger import logger
 
 from .base import BaseBrainBackend
-from .utils.sanitizer import PayloadSanitizer
+from .utils.preprocessor import MultimodalPreprocessor
 
 
 class OpenAIRemoteBackend(BaseBrainBackend):
@@ -47,7 +47,7 @@ class OpenAIRemoteBackend(BaseBrainBackend):
     async def generate(self, messages: List[ChatMessage]) -> str:
         # 这个方法现在接收的是已经经过 Perception 层或 Router 层处理过的记忆或多模态消息
         # 转换为 OpenAI 兼容的 Dict 格式
-        chat_messages = PayloadSanitizer.to_llm_payload(messages)
+        chat_messages = MultimodalPreprocessor.to_llm_payload(messages)
 
         try:
             # logger.debug(f"[BrainKernel] Thinking... input_len={len(str(chat_messages))}")

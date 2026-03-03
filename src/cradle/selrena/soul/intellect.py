@@ -19,7 +19,7 @@ from .memory.vector_store import MemoryVessel
 from .persona import PersonaManager
 from .brain.router import BrainFactory
 from .brain.utils.prompt_builder import PromptBuilder
-from .brain.utils.sanitizer import PayloadSanitizer
+from .brain.utils.preprocessor import MultimodalPreprocessor
 
 
 class SoulIntellect:
@@ -140,27 +140,13 @@ class SoulIntellect:
         """
         payload = event.payload if isinstance(event.payload, dict) else {}
 
-        # [Optimized] 既然 Message Schema 已规范化 content 字段，直接提取纯文本即可
-        # 兼容 str 或 List[ContentBlock]，并自动处理提取逻辑
-        # extracting pure text also cleans up CQ codes now
-        text = PayloadSanitizer.extract_pure_text(payload.get("content", ""))
+        # [Optimized] 使用 MultimodalPreprocessor 进行消息标准化与预处理
+        # 自动去除 CQ 码、腾讯多媒体 URL 等占位符，返回标准化结果
+        text, has_visual, is_valid = MultimodalPreprocessor.validate_ingress_payload(payload)
 
-        # [Anti-Redundancy] 如果提取后文本为空，且没有明确的视觉组件（如 ImageContent），
-        # 说明这只是一个 [CQ:image] 占位符，应忽略，等待后续的 visual snapshot 事件。
-        has_visual_component = False
-        content_raw = payload.get("content", [])
-        if isinstance(content_raw, list):
-             for item in content_raw:
-                 # Check for dict type image_url or Pydantic ImageContent
-                 if isinstance(item, dict) and (item.get("type") == "image_url" or item.get("type") == "image"):
-                     has_visual_component = True
-                     break
-                 if hasattr(item, "type") and (item.type == "image_url" or item.type == "image"):
-                     has_visual_component = True
-                     break
-        
-        if not text and not has_visual_component:
-             logger.debug("[Soul] 忽略纯 CQ 码占位符消息，等待视觉事件...")
+        # [Anti-Redundancy] 如果既没有有效文本，也没有视觉组件，说明是纯占位符消息
+        if not is_valid:
+             logger.debug("[Soul] 忽略纯 CQ 码/占位符消息，等待视觉事件...")
              return
 
         user_id = str(payload.get("user_id", "unknown"))
@@ -197,13 +183,13 @@ class SoulIntellect:
             perceived_msg_dict = await self.senses.perceive(raw_msg_dict)
             final_content = perceived_msg_dict.get("content") or initial_content
             
-            # 提取纯文本用于记忆索引 (Search Index)
-            perceived_text = PayloadSanitizer.extract_pure_text(final_content)
+            # 使用 MultimodalPreprocessor 提取纯文本用于记忆索引 (Search Index)
+            perceived_text = MultimodalPreprocessor.extract_pure_text(final_content)
 
         except Exception as e:
             logger.error(f"[Soul] 感知模块异常: {e}")
             final_content = initial_content
-            perceived_text = PayloadSanitizer.extract_pure_text(initial_content)
+            perceived_text = MultimodalPreprocessor.extract_pure_text(initial_content)
 
             
         # [Validation] 确保 final_content 非空
@@ -215,7 +201,7 @@ class SoulIntellect:
         vision_caption = ""
         current_msg_obj = Message(role=user_id if user_id in ["user", "assistant"] else "user", content=final_content)
         
-        if PayloadSanitizer.has_vision_payload([current_msg_obj]):
+        if MultimodalPreprocessor.has_visual_content(current_msg_obj):
             try:
                 # 让大脑的视觉中心 (Visual Center) 进行转述
                 logger.info("[Soul] 正在调用视觉专家进行记忆转述...")
@@ -236,7 +222,7 @@ class SoulIntellect:
              
              chat_history_dicts = stm.get_messages()
              # 对历史消息进行清洗，确保它们也是有效的 Message 对象
-             chat_history_objs = PayloadSanitizer.normalize_messages(chat_history_dicts)
+             chat_history_objs = MultimodalPreprocessor.normalize_messages(chat_history_dicts)
              
              # 注意：传给 Brain 的是包含原始图片的多模态 content，确保它能“看到”
              context_messages = PromptBuilder.build_context_window(

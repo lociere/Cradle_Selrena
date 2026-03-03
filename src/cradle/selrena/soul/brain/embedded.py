@@ -8,7 +8,7 @@ from cradle.schemas.domain.chat import Message as ChatMessage
 from cradle.utils.logger import logger
 
 from .base import BaseBrainBackend
-from .utils.sanitizer import PayloadSanitizer
+from .utils.preprocessor import MultimodalPreprocessor
 
 # 懒加载：避免在模块导入时就检查依赖
 try:
@@ -189,10 +189,10 @@ class LlamaCppEmbeddedBackend(BaseBrainBackend):
         # [Sanitization]
         # 如果当前后端不支持多模态，必须将图片/音频降级为纯文本，否则会导致 llama-cpp 崩溃或乱码
         if not self._is_multimodal:
-            messages = PayloadSanitizer.sanitize_for_text_core(messages)
+            messages = MultimodalPreprocessor.sanitize_for_text_core(messages)
             
         # 转换为 LlamaCpp 兼容的 Dict 格式
-        chat_messages = PayloadSanitizer.to_llm_payload(messages)
+        chat_messages = MultimodalPreprocessor.to_llm_payload(messages)
 
         async with self._lock:
             # 使用 asyncio.to_thread 将同步的 C++ 调用剥离出去

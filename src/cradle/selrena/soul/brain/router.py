@@ -8,7 +8,7 @@ from cradle.utils.logger import logger
 
 from .base import BaseBrainBackend
 from .utils.prompt_builder import PromptBuilder
-from .utils.sanitizer import PayloadSanitizer
+from .utils.preprocessor import MultimodalPreprocessor
 
 
 class BrainFactory:
@@ -138,11 +138,11 @@ class HybridBrainRouter(BaseBrainBackend):
         根据策略配置，选择 'Single Multimodal' 或 'Split Tasks' 执行路径。
         """
         # [Layer 0] 入口标准化
-        normalized_messages = PayloadSanitizer.normalize_messages(messages)
+        normalized_messages = MultimodalPreprocessor.normalize_messages(messages)
         
         mode = self.strategy.routing_mode
         core_provider = self._core_provider_name
-        is_visual = PayloadSanitizer.is_visual_request(normalized_messages)
+        is_visual = MultimodalPreprocessor.has_vision_payload_batch(normalized_messages)
 
         logger.debug(
             f"[HybridBrain] Routing Decision: mode={mode}, has_visual={is_visual}, core={core_provider}")
@@ -201,7 +201,7 @@ class HybridBrainRouter(BaseBrainBackend):
             else:
                  # 核心也不支持，只能降级为纯文本
                  logger.warning("[HybridBrain] Vision skipped (No capable model).")
-                 return await core_backend.generate(PayloadSanitizer.sanitize_for_text_core(messages))
+                 return await core_backend.generate(MultimodalPreprocessor.sanitize_for_text_core(messages))
 
         # 2. Vision Interpretation (Transcribe Image to Text)
         try:
@@ -221,7 +221,7 @@ class HybridBrainRouter(BaseBrainBackend):
 
         # 3. Cognitive Processing (Inject Description into Context)
         logger.debug(f"[HybridBrain] Relaying transcribed context to Core ({core_provider_name})...")
-        handoff_messages = PayloadSanitizer.sanitize_for_text_core(messages, vision_summary)
+        handoff_messages = MultimodalPreprocessor.sanitize_for_text_core(messages, vision_summary)
         
         return await core_backend.generate(handoff_messages)
 
@@ -232,7 +232,7 @@ class HybridBrainRouter(BaseBrainBackend):
             raise ValueError(f"Backend '{provider_name}' missing.")
         
         # 即使是纯文本流，也可以进行一次清理以防万一
-        clean_messages = PayloadSanitizer.sanitize_for_text_core(messages)
+        clean_messages = MultimodalPreprocessor.sanitize_for_text_core(messages)
         return await backend.generate(clean_messages)
 
     async def _execute_fallback(self, messages: List[ChatMessage]) -> str:
@@ -241,7 +241,7 @@ class HybridBrainRouter(BaseBrainBackend):
             logger.warning(f"[HybridBrain] Switching to Fallback Backend...")
             try:
                 # Fallback backend is assumed to be text-only or limited
-                pure_messages = PayloadSanitizer.sanitize_for_text_core(messages)
+                pure_messages = MultimodalPreprocessor.sanitize_for_text_core(messages)
                 return await self._fallback_backend.generate(pure_messages)
             except Exception as local_err:
                 logger.error(f"[HybridBrain] Fallback failed: {local_err}")
@@ -254,7 +254,7 @@ class HybridBrainRouter(BaseBrainBackend):
         如果配置了 Vision Expert，则调用它生成描述；
         如果是 Single Multimodal 模式且无专门 Expert，则尝试让核心模型描述（暂略，通常由 generate 直接处理）。
         """
-        is_visual = PayloadSanitizer.is_visual_request([message])
+        is_visual = MultimodalPreprocessor.has_vision_payload_batch([message])
         if not is_visual:
             return None
 
@@ -280,7 +280,7 @@ class HybridBrainRouter(BaseBrainBackend):
         """调用视觉后台进行转录"""
         # 提取包含图片的最后一条消息进行专门处理
         # TODO: Future optimization: handle multi-image history
-        last_user_msg_list = PayloadSanitizer.extract_last_vision_msg(messages)
+        last_user_msg_list = MultimodalPreprocessor.extract_last_vision_msg(messages)
         
         if not last_user_msg_list:
             return ""
