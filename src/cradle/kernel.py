@@ -55,7 +55,7 @@ async def boot_sequence():
             napcat = NapcatServer()
             await napcat.initialize()
             # high-level client still useful to parse incoming events
-            napcat_client_obj = NapcatClient()
+            napcat_client_obj = NapcatClient(brain=soul.brain)
             await napcat_client_obj.initialize()
         else:
             logger.debug("Napcat 已禁用，跳过初始化")

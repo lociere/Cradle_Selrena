@@ -1,4 +1,3 @@
-import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from cradle.schemas.domain.chat import Message
@@ -54,13 +53,11 @@ class MultimodalPreprocessor:
                             # Copy the item dict
                             new_item = item.copy()
                             raw_text = new_item.get("text", "")
+                            # [Optimization] Use simplified cleaner
                             cleaned_text = cls.cleanup_cq_codes(raw_text)
                             if cleaned_text:
                                 new_item["text"] = cleaned_text
                                 cleaned_content.append(new_item)
-                        # [Cleanup] Remove reply/at blocks to avoid leaking raw IDs
-                        elif item.get("type") in ["reply", "at", "face"]:
-                            continue
                         else:
                             cleaned_content.append(item)
                     # 处理 Pydantic 对象
@@ -91,36 +88,18 @@ class MultimodalPreprocessor:
     @staticmethod
     def cleanup_cq_codes(text: str) -> str:
         """
-        [Noise Reduction]
-        移除 CQ 码及特定占位符。
+        [DEPRECATED] Removes noise from text.
+        Logic for CQ codes has been moved to Vessel/Napcat modules.
+        This now only performs basic whitespace cleanup.
         """
         if not text:
             return ""
             
-        # 1. 移除 CQ 码 (如 [CQ:image,file=...], [CQ:reply,id=...])
-        # 优化正则：更彻底地匹配所有 [CQ:...] 格式
-        text = re.sub(r'\[CQ:[^\]]+\]', '', text)
-        
-        # 2. 移除占位符 (如 [图片], [动画表情], [回复])
-        text = re.sub(r'\[(图片|动画表情|表情|视频|语音|回复)\]', '', text)
-        
-        # 3. 移除多媒体 URL (如 c2cpicdw.qpic.cn)
-        text = MultimodalPreprocessor._cleanup_multimedia_urls(text)
-        
         return text.strip()
 
     @staticmethod
     def _cleanup_multimedia_urls(text: str) -> str:
-        """内部方法: 移除多媒体服务链接"""
-        if not text:
-            return ""
-        # 腾讯系多媒体域名
-        patterns = [
-            r'https?://multimedia\.nt\.qq\.com\.cn/[^\s]+',
-            r'https?://(c2cpicdw\.qpic\.cn|groups-pic\.qlogo\.cn|gchat\.qpic\.cn)/[^\s]+'
-        ]
-        for p in patterns:
-            text = re.sub(p, '', text)
+        """[DEPRECATED] Internal method."""
         return text
 
     @classmethod

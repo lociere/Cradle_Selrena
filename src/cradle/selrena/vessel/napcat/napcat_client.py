@@ -28,6 +28,7 @@ from cradle.schemas.protocol.events.perception import (Modality,
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.utils.event_payload import extract_fields
 from cradle.utils.logger import logger
+from .cortex import NapcatCortex
 
 
 NAPCAT_SOURCE_ID_KEYS: dict[str, tuple[str, ...]] = {
@@ -47,9 +48,11 @@ class NapcatClient:
     # 类级别标记：是否已有某个实例完成订阅
     _subscribed: bool = False
 
-    def __init__(self):
+    def __init__(self, brain=None):
         self.bus = global_event_bus
         self._did_subscribe = False
+        # 将大脑实例注入给 Napcat 皮层，使其具备本地多模态感知能力
+        self.cortex = NapcatCortex(brain_factory=brain)
 
     async def initialize(self):
         """
@@ -104,7 +107,28 @@ class NapcatClient:
     async def on_napcat_event(self, event: BaseEvent):
         """
         处理 Napcat (OneBot) 原始事件。
+        [Refactored]: Delegated to NapcatCortex.
+        """
+        # [Cortex Mode] 也就是所谓的"专家模式"处理入口
+        # Pre-process using the new dedicated brain (NapcatCortex)
+        processed = await self.cortex.proccess_ingress(event.payload)
         
+        if processed:
+            # Publish the processed result as standard transcription event
+            # The Cortex has already combined text+vision into a rich prompt.
+            await self._publish_text(
+                processed["content"],
+                raw=event.payload,
+                user_id=processed["user_id"],
+                group_id=processed["group_id"],
+                name=processed.get("name") # [New] Pass name
+            )
+        
+        # 无论是否有处理结果，均在此返回，不再执行旧逻辑
+        return
+
+        # [Legacy Logic Below - Effectively Disabled]
+        """
         Args:
             event (BaseEvent): 总线传递的原始事件对象。
         
@@ -292,7 +316,7 @@ class NapcatClient:
                 return item
         return ""
 
-    async def _publish_text(self, text: str, raw: Any, user_id: int | None = None, group_id: int | None = None):
+    async def _publish_text(self, text: str, raw: Any, user_id: int | None = None, group_id: int | None = None, name: str | None = None):
         """
         发布纯文本消息到感知层 (模拟为语音转录)。
         
@@ -301,6 +325,7 @@ class NapcatClient:
             raw (Any): 原始 OneBot 负载（仅做调试保留）。
             user_id (int | None): 发送者 QQ 号。
             group_id (int | None): QQ 群号。
+            name (str | None): 发送者昵称 (群名片 > 个人昵称) [New]
         """
         if not text:
             return
@@ -308,15 +333,30 @@ class NapcatClient:
             text = str(text)
 
         # [Standardization] 仅用于日志，payload 中不保留冗余字段
-        logger.debug(f"[NapcatClient] 收到消息: {text[:50]}...")
+        logger.debug(f"[NapcatClient] 收到消息({name or user_id}): {text[:50]}...")
         
         # [Strict Mode] 严格使用 Pydantic Model 构建载荷
-        payload_obj = MultiModalPayload(
-            content=[TextContent(text=text)],
-            raw=raw,
-            user_id=user_id,
-            group_id=group_id
-        )
+        # [New] Inject 'name' into payload if available (Soul might support it)
+        payload_dict = {
+            "content": [TextContent(text=text)],
+            "raw": raw,
+            "user_id": user_id,
+            "group_id": group_id
+        }
+        if name:
+            payload_dict["name"] = name
+
+        # We need to ensure MultiModalPayload supports 'name' or extra fields
+        # If not, we might need to inject it into raw or handle it differently.
+        # Assuming we can inject extra fields into the dict before validation if extra='allow'
+        
+        try:
+            payload_obj = MultiModalPayload(**payload_dict)
+        except Exception:
+             # Fallback if 'name' is not supported in schema yet
+             if "name" in payload_dict:
+                 del payload_dict["name"]
+             payload_obj = MultiModalPayload(**payload_dict)
 
         await self.bus.publish(PerceptionEvent(
             name="perception.audio.transcription", # Generic text/audio input

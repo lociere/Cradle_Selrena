@@ -3,6 +3,7 @@ from typing import Optional
 from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.selrena.vessel.napcat.napcat_client import NapcatClient
+from cradle.selrena.vessel.napcat.memory.short_term import napcat_memory
 from cradle.utils.event_payload import extract_fields, resolve_event_fields
 from cradle.utils.logger import logger
 
@@ -125,15 +126,28 @@ class NapcatResponder:
             return
 
         # 优先按群聊上下文回复，否则回私聊。
-        if isinstance(target_group_id, int) and target_group_id != 0:
-            await self._client.reply_group(target_group_id, text)
-            return
-
-        if isinstance(target_user_id, int):
-            await self._client.reply(target_user_id, text)
-            return
-
-        if self._last_group is not None:
-            await self._client.reply_group(self._last_group, text)
-        elif self._last_user is not None:
-            await self._client.reply(self._last_user, text)
+        try:
+            target_gid = None
+            target_uid = None
+            
+            if isinstance(target_group_id, int) and target_group_id != 0:
+                target_gid = target_group_id
+            elif isinstance(target_user_id, int) and target_user_id != 0:
+                target_uid = target_user_id
+            elif self._last_group is not None:
+                target_gid = self._last_group
+            elif self._last_user is not None:
+                target_uid = self._last_user
+            
+            # Send and Learn
+            if target_gid:
+                await self._client.reply_group(target_gid, text)
+                napcat_memory.append(target_gid, 0, {"role": "assistant", "content": text, "metadata": {"source": "Soul"}})
+            elif target_uid:
+                await self._client.reply(target_uid, text)
+                napcat_memory.append(None, target_uid, {"role": "assistant", "content": text, "metadata": {"source": "Soul"}})
+            else:
+                 logger.warning("[NapcatResponder] 无法确定发送目标")
+                 
+        except Exception as e:
+            logger.error(f"[NapcatResponder] 发送失败: {e}")

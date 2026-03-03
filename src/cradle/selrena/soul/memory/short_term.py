@@ -14,80 +14,40 @@ class ShortTermMemory:
     负责存储当前对话上下文，并在系统重启时恢复记忆。
     """
 
-    def __init__(self, max_history_len: int = 20, session_key: str = "default"):
-        self.max_history_len = max_history_len  # 只保留最近 N 轮对话
-        safe_key = self._sanitize_session_key(session_key)
-        self.file_path = ProjectPath.DATA_MEMORY / \
-            f"short_term_{safe_key}.json"
+    def __init__(self, max_history_len: int = 20):
+        """
+        [Standardized]
+        ShortTermMemory no longer manages file persistence by itself.
+        It is now a pure in-memory sliding window buffer.
+        Persistence is handled by the Brain or a dedicated SessionManager if needed.
+        """
+        self.max_history_len = max_history_len
         self.messages: List[Message] = []
 
-        # 初始化时尝试加载现有记忆
-        self.load()
-
-    @staticmethod
-    def _sanitize_session_key(session_key: str) -> str:
-        value = (session_key or "default").strip().lower()
-        value = re.sub(r"[^a-z0-9_\-]", "_", value)
-        return value[:64] if value else "default"
-
     def add(self, role: str, content: str):
-        """添加一条新记忆"""
+        """Add a new memory entry."""
         msg = Message(role=role, content=content)
         self.messages.append(msg)
-
-        # 触发自动修剪和保存
         self._trim()
-        self.save()
 
     def get_messages(self, include_system: bool = False, system_prompt: str = "") -> List[Dict[str, str]]:
         """
-        获取用于 LLM 调用的消息列表
-        :param include_system: 是否临时在头部拼接 System Prompt
+        Get messages for LLM consumption.
         """
         payload = [msg.model_dump(include={'role', 'content'})
                    for msg in self.messages]
 
         if include_system and system_prompt:
-            # System Prompt 永远在最前，且不算在滑动窗口内
             system_msg = {"role": "system", "content": system_prompt}
             return [system_msg] + payload
 
         return payload
 
-    def save(self):
-        """持久化到磁盘"""
-        try:
-            data = [msg.model_dump() for msg in self.messages]
-            with open(self.file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"记忆保存失败: {e}")
-
-    def load(self):
-        """从磁盘恢复记忆"""
-        if not self.file_path.exists():
-            return
-
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # 反序列化为 Message 对象
-                self.messages = [Message(**item) for item in data]
-            logger.info(f"成功恢复短期记忆: {len(self.messages)} 条记录")
-        except Exception as e:
-            logger.error(f"记忆文件损坏，已重置: {e}")
-            self.messages = []
-
     def clear(self):
-        """清空记忆 (用于重置人格或开始新话题)"""
+        """Clear all active short-term memories."""
         self.messages = []
-        self.save()
-        logger.info("短期记忆已擦除。")
 
     def _trim(self):
-        """修剪记忆，保持上下文在窗口范围内"""
+        """Maintain the sliding window size."""
         if len(self.messages) > self.max_history_len:
-            # 移除最早的记忆 (保留最新的 max_history_len 条)
-            removed_count = len(self.messages) - self.max_history_len
-            self.messages = self.messages[removed_count:]
-            # logger.debug(f"记忆修剪: 遗忘了早期的 {removed_count} 条对话")
+            self.messages = self.messages[-self.max_history_len:]

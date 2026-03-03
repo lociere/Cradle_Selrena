@@ -74,65 +74,30 @@ class SoulIntellect:
         EventBus.subscribe("input.user_message", self._on_hear)
         EventBus.subscribe("system.shutdown", self._on_shutdown)
 
-    async def _preload_short_term_memories(self):
+    def _preload_short_term_memories(self):
         """
-        预加载所有已存在的短时记忆会话文件。
-        遍历 data/memory/short_term_*.json，并提前实例化到内存缓存中。
+        [DEPRECATED] Memory persistence is no longer handled by ShortTermMemory directly.
+        This method is now a no-op to prevent errors until external session management is fully implemented.
         """
-        try:
-            # 引入 ProjectPath 辅助扫描
-            from cradle.utils.path import ProjectPath
-            
-            memory_dir = ProjectPath.DATA_MEMORY
-            if not memory_dir.exists():
-                return
-            
-            # 扫描所有以 short_term_ 开头的 JSON 文件
-            # Pattern: short_term_{sanitized_key}.json
-            files = list(memory_dir.glob("short_term_*.json"))
-            if not files:
-                return
-
-            logger.info(f"[Soul] 正在预热所发现的 {len(files)} 个短时记忆存档...")
-            
-            count = 0
-            for f in files:
-                try:
-                    # 提取文件名中的 Session Key (去除前缀 'short_term_' 和后缀 '.json')
-                    stem = f.stem # e.g. "short_term_user_123"
-                    if len(stem) > 11 and stem.startswith("short_term_"):
-                        key = stem[11:] # "user_123"
-                        if key:
-                            # 实例化时会自动触发 load() 读取文件内容
-                            stm = ShortTermMemory(
-                                max_history_len=self.config.memory.short_term_window,
-                                session_key=key
-                            )
-                            # 加载成功后存入缓存
-                            self.short_term_store[key] = stm
-                            count += 1
-                except Exception as ex:
-                    logger.warning(f"[Soul] 预加载短时记忆文件 '{f.name}' 失败: {ex}")
-            
-            if count > 0:
-                logger.info(f"[Soul] 短时记忆预热完成 (Loaded: {count}/{len(files)})")
-
-        except Exception as e:
-            logger.error(f"[Soul] 短时记忆预热流程异常: {e}")
+        pass
 
     async def _on_shutdown(self, signal: Any):
         logger.info("Soul 正在进入休眠...")
         await self.brain.cleanup()
         await self.senses.cleanup()
 
-    def _get_short_term_memory(self, user_id: str) -> ShortTermMemory:
-        if user_id not in self.short_term_store:
-            # 这里的 session_key 应该是 user_id
-            self.short_term_store[user_id] = ShortTermMemory(
-                max_history_len=self.config.memory.short_term_window,
-                session_key=user_id
+    def _get_short_term_memory(self, session_id: str) -> ShortTermMemory:
+        """
+        获取当前会话的短时记忆。
+        注意：现在不再依赖具体的 user_id，而是统一的 session_id (对于单用户系统通常固定)。
+        """
+        # [Simplicity] Soul 应当只关注“当前对话对象”，而非维护庞大的用户列表
+        # 如果需要多用户支持，应在 SessionManager 层处理
+        if session_id not in self.short_term_store:
+            self.short_term_store[session_id] = ShortTermMemory(
+                max_history_len=self.config.memory.short_term_window
             )
-        return self.short_term_store[user_id]
+        return self.short_term_store[session_id]
 
     async def _on_hear(self, event: BaseEvent):
         """
@@ -148,15 +113,22 @@ class SoulIntellect:
         if not is_valid:
              logger.debug("[Soul] 忽略纯 CQ 码/占位符消息，等待视觉事件...")
              return
+        
+        # [Architectural Purity]
+        # Soul 不再维护任何"访客"或"外部"会话状态。
+        # 对于外部来源 (Napcat)，假定其上传的 Context 已经包含了所需的历史记录（由 Cortex 自行维护）。
+        # Soul 只负责维护"主我"(Principal Ego) 的长期记忆流。
+        source = event.source
+        is_external_source = (source == "NapcatClient")
 
-        user_id = str(payload.get("user_id", "unknown"))
-        target_user_id = payload.get("user_id") if isinstance(
-            payload.get("user_id"), int) else None
-        target_group_id = payload.get("group_id") if isinstance(
-            payload.get("group_id"), int) else None
-
-        logger.info(f"[Soul] 意识到: {text[:30]}...")
-        stm = self._get_short_term_memory(user_id)
+        if is_external_source:
+             # 对于外部请求，Soul 不进行任何短时记忆维护
+             # 使用一个临时的、空的 context 容器，完全依赖输入 payload 携带的信息
+             # 也不应该去读取 ShortTermMemory，因为那是给主人用的
+             stm = ShortTermMemory(max_history_len=0) 
+        else:
+            # 仅对主用户使用系统级短时记忆
+            stm = self._get_short_term_memory("main_session")
 
         # 1. 加载相关记忆 (Associative Memory)
         try:
@@ -199,7 +171,7 @@ class SoulIntellect:
         # [Vision Optimization] 专家分工：如果是视觉消息，尝试获取视觉转述用于记忆
         # 避免将巨大的 Base64 或临时 URL 存入长期记忆
         vision_caption = ""
-        current_msg_obj = Message(role=user_id if user_id in ["user", "assistant"] else "user", content=final_content)
+        current_msg_obj = Message(role="user", content=final_content)
         
         if MultimodalPreprocessor.has_visual_content(current_msg_obj):
             try:
@@ -220,7 +192,10 @@ class SoulIntellect:
              persona_dict = self.persona.build_system_prompt()
              persona_msg = Message(**persona_dict)
              
-             chat_history_dicts = stm.get_messages()
+             chat_history_dicts = payload.get("external_history") if is_external_source else stm.get_messages()
+             if chat_history_dicts is None:
+                 chat_history_dicts = []
+                 
              # 对历史消息进行清洗，确保它们也是有效的 Message 对象
              chat_history_objs = MultimodalPreprocessor.normalize_messages(chat_history_dicts)
              
@@ -258,22 +233,33 @@ class SoulIntellect:
             stm.add("user", perceived_text)
             stm.add("assistant", clean_reply_text)
 
-            try:
-                self.memory_vessel.memorize_episode(
-                    f"User: {perceived_text}", metadata={"user_id": user_id})
-                self.memory_vessel.memorize_episode(f"Me: {clean_reply_text}", metadata={
-                                                    "user_id": user_id, "is_bot": True})
-            except Exception as e:
-                logger.warning(f"[Soul] 长时记忆写入失败: {e}")
+            # [Isolation Logic]: 仅当是内部(主人)会话时，才存入长期记忆库
+            # 外部对话被视为临时交互，不应污染 VectorStore
+            if not is_external_source:
+                try:
+                    self.memory_vessel.memorize_episode(f"User: {perceived_text}")
+                    self.memory_vessel.memorize_episode(f"Me: {clean_reply_text}", metadata={"is_bot": True})
+                except Exception as e:
+                     logger.warning(f"[Soul] 长时记忆写入失败: {e}")
+            else:
+                 # 对于外部会话，Soul 不做记忆留痕。
+                 # 发出的 SpeakAction 可能会被 Napcat 捕获并回复，这也不关 Soul 的事
+                 pass
 
             # 6. 表达 (Action)
+            # [Simplification] Soul broadcasts thought; Synapse/Vessel decides routing based on last active context
             action = SpeakAction(
                 source="Soul",
                 text=clean_reply_text,
-                emotion=detected_emotion,
-                target_user_id=target_user_id,
-                target_group_id=target_group_id,
+                emotion=detected_emotion
+                # We removed explicit target binding here; let the Reflex/Router handle it if needed
+                # or simply broadcast to the active channel.
             )
+            # Inject raw targets back for now to keep existing Vessel logic working until further refactor
+            # But conceptually Soul shouldn't care about IDs.
+            if hasattr(action, 'target_user_id'): action.target_user_id = payload.get("user_id")
+            if hasattr(action, 'target_group_id'): action.target_group_id = payload.get("group_id")
+            
             await EventBus.publish(action)
 
         except Exception as e:

@@ -150,3 +150,6 @@ runtime/
 # !assets/models/.gitkeep
 
 # End of file
+
+# Copilot instructions
+.github/copilot-instructions.md
