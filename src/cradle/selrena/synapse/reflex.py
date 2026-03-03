@@ -29,7 +29,7 @@ class Reflex:
         # 硬编码的生存本能关键词
         self.wake_keywords_zh = [
             "月见", "赛琳娜", "色瑞娜", "瑟瑞娜", "塞琳娜", "赛琳",
-            "赛瑞娜", "萨琳娜", "你好"
+            "赛瑞娜", "萨琳娜", "你好", "@月见"
         ]
         self.wake_keywords_en = [
             "selrena", "serena", "salrena", "serina", "selina", "celina",
@@ -111,39 +111,47 @@ class Reflex:
 
         # 3. 唤醒机制 (Arousal System)
         current_time = time.time()
-        has_wake_word = self._match_keywords(
-            text_for_match, self.wake_keywords_zh, self.wake_keywords_en)
-        previous_awake = self.is_awake
+        has_wake_word_matched = self._match_keywords(
+            text_for_match, self.wake_keywords_zh, self.wake_keywords_en
+        )
+        previous_awake_state = self.is_awake
 
-        if has_wake_word:
+        # [Logic Fix] 只要检测到唤醒词，无论当前是否唤醒，都重置最后唤醒时间
+        if has_wake_word_matched:
             self.last_wake_time = current_time
-            self.non_text_chain_until = current_time + self.non_text_chain_timeout
-            if not self.is_awake:
-                logger.info(f"[Reflex] ⚡ 唤醒检测: {normalized_text} -> 意识上线")
+            logger.info(f"[Reflex] ⚡ 唤醒词激活: {normalized_text}")
+        
+        # [Behavior Change] 即使没有唤醒词，只要还在唤醒窗口内且收到消息，
+        # 应该视为“用户正在跟我说话”，从而续期唤醒时间。
+        # 否则如果不带唤醒词的连续对话超过20秒（单方面陈述），她就会睡着。
+        elif self.is_awake and not self.strict_wake:
+             # 宽松模式下，收到任何有效输入都续期
+             self.last_wake_time = current_time
+             logger.debug(f"[Reflex] ⚡ 连续对话续期 ({self.wake_timeout}s)")
 
-        # 计算是否超时（严格模式下不使用宽限窗口）
+        # 计算当前唤醒状态
         if self.strict_wake:
-            self.is_awake = has_wake_word
+            self.is_awake = has_wake_word_matched
         else:
-            if has_wake_word or (current_time - self.last_wake_time) < self.wake_timeout:
+            # 宽松模式：有唤醒词 OR 在超时窗口内
+            time_since_wake = current_time - self.last_wake_time
+            if time_since_wake < self.wake_timeout:
                 self.is_awake = True
             else:
                 self.is_awake = False
-
-        if previous_awake and not self.is_awake:
-            if self.strict_wake:
-                logger.info("[Reflex] 💤 严格模式：未检测到唤醒词 -> 意识休眠")
-            else:
-                logger.info("[Reflex] 💤 注意力超时 -> 意识休眠")
-        elif (not previous_awake) and self.is_awake and has_wake_word:
-            logger.debug("[Reflex] 唤醒状态已激活。")
+        
+        # 状态变更日志
+        if previous_awake_state and not self.is_awake:
+             logger.info(f"[Reflex] 💤 注意力耗尽 (空闲 {current_time - self.last_wake_time:.1f}s > {self.wake_timeout}s) -> 意识休眠")
+        elif not previous_awake_state and self.is_awake:
+             logger.info("[Reflex] ⚡ 意识已上线")
 
         # 4. 发布全局唤醒状态（由皮质层消费）
         await self.bus.publish(BaseEvent(
             name="state.arousal",
             payload={
                 "is_awake": self.is_awake,
-                "has_wake_word": has_wake_word,
+                "has_wake_word": has_wake_word_matched,
                 "strict_wake_word": self.strict_wake,
                 "wake_timeout_sec": self.wake_timeout,
             },
@@ -152,7 +160,7 @@ class Reflex:
 
         # 5. 脊髓层意识流编排：决定是否上行给 Soul
         within_non_text_chain = is_non_text and current_time <= self.non_text_chain_until
-        allow_to_conscious = has_wake_word if self.strict_wake else self.is_awake
+        allow_to_conscious = has_wake_word_matched if self.strict_wake else self.is_awake
         if within_non_text_chain:
             allow_to_conscious = True
 
