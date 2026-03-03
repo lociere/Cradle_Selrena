@@ -1,41 +1,47 @@
-"""月见用的高级 Napcat 客户端（负责 QQ 消息处理）。
+"""
+Napcat 客户端 (OneBot 协议适配器)。
 
-本模块从总线消费原始 OneBot 事件（无论是通过适配器还是
-服务器组件传入），并将消息推送转换成框架内部信号。为了
-保持与音频输入相同的处理路径，我们将提取到的文本作为
-``perception.audio.transcription`` 发送，而不是直接进入
-意识层。
+本模块负责接入基于 OneBot v11 协议的消息源（如 QQ），将其转换为系统内部标准事件。
+它充当了外部即时通讯软件与 SELRENA 核心系统之间的桥梁。
 
-目前仅处理文本消息；其它 OneBot 事件类型以后可以扩展。
+主要职责：
+1. 监听 OneBot 事件（消息、通知等）。
+2. 将非结构化的 OneBot 数据清洗为标准的 `MultiModalPayload`。
+3. 发布感知层事件 (`perception.*`) 供上游模块消费。
 
-主要发布 ``perception.audio.transcription`` 事件，载荷结构：
-
-```python
-{
-    "text": "...",
-    "source": "qq",          # 固定值，用于标记 QQ 来源
-    "raw": <original payload>,# 保留原始负载，便于调试/扩展
-    "user_id": 12345,         # 提取到的发送者（如果有）
-    "group_id": 67890,        # 若消息来自群聊则包含该字段
-}
-```
-
-该组件通常在系统启动时初始化并注册。
+注意：
+文本消息目前统一发布为 `perception.audio.transcription` 事件，
+以便复用音频转录后的处理链路（即视为"来自外部的语言输入"）。
 """
 
+import asyncio
 from typing import Any
 
-from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.core.config_manager import global_config
-from cradle.schemas.protocol.events import BaseEvent
+from cradle.schemas.domain.multimodal import (AudioContent, ContentBlock,
+                                              ImageContent, TextContent,
+                                              VideoContent)
+from cradle.schemas.protocol.events.base import BaseEvent
+from cradle.schemas.protocol.events.perception import (Modality,
+                                                       MultiModalPayload,
+                                                       PerceptionEvent)
+from cradle.selrena.synapse.event_bus import global_event_bus
+from cradle.utils.event_payload import extract_fields
 from cradle.utils.logger import logger
 
 
-class NapcatClient:
-    """处理 Napcat 上报的 OneBot 事件并转发消息。
+NAPCAT_SOURCE_ID_KEYS: dict[str, tuple[str, ...]] = {
+    "user_id": ("user_id", "qq"),
+    "group_id": ("group_id",),
+}
 
-    由于测试和自动装载流程可能会创建多个实例，为避免重复消费
-    同一事件，类级别维护一个订阅标记，只有首个实例会注册监听。
+
+class NapcatClient:
+    """
+    Napcat 客户端核心类。
+
+    维护与 OneBot 兼容客户端的通信状态，并负责事件分发。
+    实现了单例订阅模式，避免多实例同时监听同一总线事件导致的消息重复。
     """
 
     # 类级别标记：是否已有某个实例完成订阅
@@ -46,15 +52,14 @@ class NapcatClient:
         self._did_subscribe = False
 
     async def initialize(self):
-        """订阅 Napcat 事件。
-
-        高级客户端在事件总线收到 OneBot 事件时才有用，当前
-        只有服务器模式才会产生此类事件。如果 napcat 被禁用或
-        非服务器模式，则跳过订阅以避免冗余。
-
-        以前我们直接把文本发布为 ``input.user_message``，绕过了
-        Layer2/Reflex 两层。现在会先发 ``perception.audio.transcription``
-        以遵循架构，让脊髓反射与注意力机制起作用。
+        """
+        初始化客户端并注册事件监听。
+        
+        流程说明：
+        1. 检查配置是否启用 napcat。
+        2. 若未订阅过，则向全局总线注册 `napcat.event` 和 `napcat.response` 监听器。
+        3. 注册到全局生命周期管理器 (`global_lifecycle`)。
+        4. 尝试启动 `NapcatResponder` 以支持反向通信。
         """
         cfg = global_config.get_system().napcat
         if not cfg.enable:
@@ -80,7 +85,8 @@ class NapcatClient:
 
         # 自动安装 NapcatResponder（主要用于服务器模式回包）。
         try:
-            from cradle.selrena.synapse.napcat_responder import NapcatResponder
+            from cradle.selrena.vessel.napcat.napcat_responder import \
+                NapcatResponder
             await NapcatResponder().initialize()
         except Exception:
             # 模块不可用或已初始化时忽略，不影响主流程。
@@ -96,6 +102,17 @@ class NapcatClient:
         logger.info("[NapcatClient] 已清理")
 
     async def on_napcat_event(self, event: BaseEvent):
+        """
+        处理 Napcat (OneBot) 原始事件。
+        
+        Args:
+            event (BaseEvent): 总线传递的原始事件对象。
+        
+        Logic:
+            1. 递归解析事件载荷 (payload)，兼容 OneBot 各种嵌套格式。
+            2. 提取文本内容 -> 发布 `perception.audio.transcription` (模拟语音转录输入)。
+            3. 提取多模态内容 (图片/语音等) -> 发布 `perception.visual.snapshot` (模拟视觉输入)。
+        """
         data = event.payload
 
         # 辅助函数：递归提取可处理的文本片段。
@@ -164,7 +181,8 @@ class NapcatClient:
                 return items
 
             msg_type = node.get("type")
-            data_obj = node.get("data") if isinstance(node.get("data"), dict) else {}
+            data_obj = node.get("data") if isinstance(
+                node.get("data"), dict) else {}
             if msg_type in {"image", "video", "record", "file", "json", "forward", "face", "reply"}:
                 file_ref = (
                     data_obj.get("url")
@@ -200,52 +218,25 @@ class NapcatClient:
         # 收集我们能找到的所有文本片段，并尝试提取发送者 ID 和群组 ID
         user_id = None
         group_id = None
-        def _extract_user_id(node: Any) -> int | None:
-            if isinstance(node, dict):
-                if isinstance(node.get("user_id"), int):
-                    return node.get("user_id")
-                # some payloads nest sender info
-                if isinstance(node.get("sender"), dict):
-                    return _extract_user_id(node.get("sender"))
-                for v in node.values():
-                    if isinstance(v, (list, dict)):
-                        uid = _extract_user_id(v)
-                        if uid is not None:
-                            return uid
-            elif isinstance(node, list):
-                for element in node:
-                    uid = _extract_user_id(element)
-                    if uid is not None:
-                        return uid
-            return None
-
-        def _extract_group_id(node: Any) -> int | None:
-            if isinstance(node, dict):
-                if isinstance(node.get("group_id"), int) and node.get("group_id") != 0:
-                    return node.get("group_id")
-                for v in node.values():
-                    if isinstance(v, (list, dict)):
-                        gid = _extract_group_id(v)
-                        if gid is not None:
-                            return gid
-            elif isinstance(node, list):
-                for element in node:
-                    gid = _extract_group_id(element)
-                    if gid is not None:
-                        return gid
-            return None
 
         if isinstance(data, (list, dict)):
             texts = _extract_texts(data)
             media_inputs = _extract_non_text_inputs(data)
             if texts:
                 # 在原始结构中提取可能存在的用户/群 ID。
-                user_id = _extract_user_id(data)
-                group_id = _extract_group_id(data)
+                ids = extract_fields(
+                    data,
+                    field_keys=NAPCAT_SOURCE_ID_KEYS,
+                    value_type=int,
+                    allow_zero=False,
+                )
+                user_id = ids.get("user_id")
+                group_id = ids.get("group_id")
                 if user_id is not None:
                     logger.debug(f"[NapcatClient] 从原始数据提取到 user_id={user_id}")
                 if group_id is not None:
-                    logger.debug(f"[NapcatClient] 从原始数据提取到 group_id={group_id}")
+                    logger.debug(
+                        f"[NapcatClient] 从原始数据提取到 group_id={group_id}")
                 await self._publish_text("".join(texts), raw=data, user_id=user_id, group_id=group_id)
                 for media in media_inputs:
                     await self._publish_non_text(
@@ -260,8 +251,14 @@ class NapcatClient:
                 # 否则可能导致重复转发或错误处理。
                 return
             if media_inputs:
-                user_id = _extract_user_id(data)
-                group_id = _extract_group_id(data)
+                ids = extract_fields(
+                    data,
+                    field_keys=NAPCAT_SOURCE_ID_KEYS,
+                    value_type=int,
+                    allow_zero=False,
+                )
+                user_id = ids.get("user_id")
+                group_id = ids.get("group_id")
                 for media in media_inputs:
                     await self._publish_non_text(
                         kind=str(media.get("kind", "non_text")),
@@ -296,26 +293,35 @@ class NapcatClient:
         return ""
 
     async def _publish_text(self, text: str, raw: Any, user_id: int | None = None, group_id: int | None = None):
-        # 避免将非字符串直接交给上层；历史上 SoulIntellect 对列表
-        # 执行正则会触发异常，这里统一兜底为字符串。
+        """
+        发布纯文本消息到感知层 (模拟为语音转录)。
+        
+        Args:
+            text (str): 提取出的文本内容。
+            raw (Any): 原始 OneBot 负载（仅做调试保留）。
+            user_id (int | None): 发送者 QQ 号。
+            group_id (int | None): QQ 群号。
+        """
         if not text:
             return
         if not isinstance(text, str):
             text = str(text)
-        logger.debug(f"[NapcatClient] 收到消息: {text}")
-        payload: dict = {"text": text, "source": "qq", "raw": raw}
-        if isinstance(user_id, int):
-            payload["user_id"] = user_id
-        if isinstance(group_id, int):
-            payload["group_id"] = group_id
-        # 提取完文本与用户/群 ID 后，统一送入常规感知管线，
-        # 不再直接跳到 ``input.user_message``。
-        # 后续由 Layer2(Edge) 做外围规整，
-        # 再由 Reflex 完成门控与意识流编排。
-        # 再按架构发布到意识层。
-        await self.bus.publish(BaseEvent(
-            name="perception.audio.transcription",
-            payload=payload,
+
+        # [Standardization] 仅用于日志，payload 中不保留冗余字段
+        logger.debug(f"[NapcatClient] 收到消息: {text[:50]}...")
+        
+        # [Strict Mode] 严格使用 Pydantic Model 构建载荷
+        payload_obj = MultiModalPayload(
+            content=[TextContent(text=text)],
+            raw=raw,
+            user_id=user_id,
+            group_id=group_id
+        )
+
+        await self.bus.publish(PerceptionEvent(
+            name="perception.audio.transcription", # Generic text/audio input
+            modality=Modality.TEXT,
+            payload=payload_obj, # 自动 validate
             source="NapcatClient"
         ))
 
@@ -328,28 +334,67 @@ class NapcatClient:
         user_id: int | None = None,
         group_id: int | None = None,
     ):
-        payload: dict[str, Any] = {
-            "caption": summary,
-            "source": "qq",
-            "raw": raw,
-            "kind": kind,
-        }
-        if file_ref:
-            payload["file"] = file_ref
-            payload["url"] = file_ref
-        if isinstance(user_id, int):
-            payload["user_id"] = user_id
-        if isinstance(group_id, int):
-            payload["group_id"] = group_id
+        """
+        发布多模态消息 (图片/语音/视频/未知) 到感知层。
+        
+        Args:
+            kind (str): 原始消息类型 (如 "image", "record", "video")。
+            summary (str): 文本摘要或简述 (例如 "[图片]" 或 OCR 结果)。
+            file_ref (str): 资源地址 (URL 或文件路径)。
+            raw (Any): 原始 OneBot 消息负载。
+            user_id (int | None): 发送者 QQ 号。
+            group_id (int | None): QQ 群号。
+        """
+        # [Strict Structure] 重新组织 payload，移除所有非标字段
+        content_blocks: list[ContentBlock] = []
+        try:
+            if file_ref:
+                if kind == "image":
+                    content_blocks.append(
+                        ImageContent(image_url={"url": file_ref}))
+                elif kind == "record":
+                    content_blocks.append(
+                        AudioContent(audio_url={"url": file_ref}))
+                elif kind == "video":
+                    content_blocks.append(
+                        VideoContent(video_url={"url": file_ref}))
+            
+            # 如果还有附带文本（如summary或caption），也作为 TextContent 加入
+            if summary:
+                 content_blocks.append(TextContent(text=summary))
 
-        await self.bus.publish(BaseEvent(
-            name="perception.visual.snapshot",
-            payload=payload,
+        except Exception as e:
+            logger.error(f"[NapcatClient] 构建多模态 content 失败: {e}")
+            # 出错时构建一个纯文本错误提示，确保数据链不断
+            content_blocks.append(TextContent(text=f"[System Error: {kind} content build failed]"))
+
+        payload_obj = MultiModalPayload(
+            content=content_blocks,
+            user_id=user_id,
+            group_id=group_id,
+            raw=raw
+        )
+
+        file_size = None
+        if isinstance(raw, dict):
+            data_obj = raw.get("data")
+            if isinstance(data_obj, dict):
+                file_size = data_obj.get("file_size")
+        
+        logger.debug(
+            f"[NapcatClient] 非文本上行: kind={kind}, file_size={file_size}, content_len={len(content_blocks)}"
+        )
+
+        await self.bus.publish(PerceptionEvent(
+            name="perception.visual.snapshot", # Or generic multimodal event
+            modality=Modality.MULTIMODAL,
+            payload=payload_obj,
             source="NapcatClient"
         ))
     # ------------------------------------------------------------------
     # 对外发送辅助方法
     # ------------------------------------------------------------------
+
     async def send_api(self, api: str, params: dict):
         """辅助方法：发出一个 *napcat.send* 事件，连接的客户端
         会帮忙转发。
@@ -368,19 +413,61 @@ class NapcatClient:
             source="NapcatClient",
         ))
 
+    def _split_message(self, text: str, max_len: int = 1500) -> list[str]:
+        """按最大长度及标点符号智能分段消息"""
+        if len(text) <= max_len:
+            return [text]
+
+        chunks = []
+        current_chunk = ""
+
+        # 优先按换行符分割
+        lines = text.split('\n')
+        for line in lines:
+            if len(current_chunk) + len(line) + 1 <= max_len:
+                current_chunk += (line + '\n')
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = line + '\n'
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        # 如果还有单段超长的（比如无换行符长文本），硬切分
+        final_chunks = []
+        for chunk in chunks:
+            while len(chunk) > max_len:
+                final_chunks.append(chunk[:max_len])
+                chunk = chunk[max_len:]
+            if chunk:
+                final_chunks.append(chunk)
+
+        return final_chunks
+
     async def reply(self, user_id: int, text: str):
         """简单私聊回复的快捷包装。"""
-        logger.debug(f"[NapcatClient] reply to {user_id} with text={text!r}")
-        await self.send_api(
-            "send_private_msg", {"user_id": user_id, "message": text}
-        )
+        logger.debug(
+            f"[NapcatClient] reply to {user_id} with text={text[:50]}...")
+        for chunk in self._split_message(text):
+            if chunk.strip():
+                await self.send_api(
+                    "send_private_msg", {"user_id": user_id, "message": chunk}
+                )
+                # 稍微延时避免刷屏风控
+                await asyncio.sleep(0.5)
 
     async def reply_group(self, group_id: int, text: str):
         """在群聊中发送回复。"""
-        logger.debug(f"[NapcatClient] reply_group to {group_id} with text={text!r}")
-        await self.send_api(
-            "send_group_msg", {"group_id": group_id, "message": text}
-        )
+        logger.debug(
+            f"[NapcatClient] reply_group to {group_id} with text={text[:50]}...")
+        for chunk in self._split_message(text):
+            if chunk.strip():
+                await self.send_api(
+                    "send_group_msg", {"group_id": group_id, "message": chunk}
+                )
+                await asyncio.sleep(0.8)
+
     async def on_napcat_response(self, event: BaseEvent):
         data = event.payload or {}
         status = data.get("status")
@@ -400,6 +487,7 @@ class NapcatClient:
             # 同时作为系统消息反馈给上层。
             await self.bus.publish(BaseEvent(
                 name="input.system_message",
-                payload={"text": f"Napcat API error: {data.get('message')}", "raw": data},
+                payload={
+                    "text": f"Napcat API error: {data.get('message')}", "raw": data},
                 source="NapcatClient"
             ))

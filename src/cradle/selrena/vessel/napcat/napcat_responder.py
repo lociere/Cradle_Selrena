@@ -1,9 +1,21 @@
-from typing import Optional, Any
+from typing import Optional
 
-from cradle.schemas.protocol.events import BaseEvent
+from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.selrena.vessel.napcat.napcat_client import NapcatClient
+from cradle.utils.event_payload import extract_fields, resolve_event_fields
 from cradle.utils.logger import logger
+
+
+NAPCAT_SOURCE_ID_KEYS: dict[str, tuple[str, ...]] = {
+    "user_id": ("user_id", "qq"),
+    "group_id": ("group_id",),
+}
+
+NAPCAT_TARGET_ID_KEYS: dict[str, tuple[str, ...]] = {
+    "target_user_id": ("target_user_id",),
+    "target_group_id": ("target_group_id",),
+}
 
 
 class NapcatResponder:
@@ -47,42 +59,32 @@ class NapcatResponder:
 
     async def _on_user_message(self, event: BaseEvent):
         payload = event.payload or {}
-        # 优先从当前 payload 直接提取用户 ID。
-        uid = payload.get("user_id") or payload.get("qq")
-        # 若未命中，再从 raw 原始负载中递归查找。
-        if uid is None:
-            raw = payload.get("raw")
-            def _find_uid(node: Any) -> int | None:
-                if isinstance(node, dict):
-                    if isinstance(node.get("user_id"), int):
-                        return node.get("user_id")
-                    if isinstance(node.get("sender"), dict):
-                        return _find_uid(node.get("sender"))
-                    for v in node.values():
-                        uid2 = _find_uid(v)
-                        if uid2 is not None:
-                            return uid2
-                elif isinstance(node, list):
-                    for el in node:
-                        uid2 = _find_uid(el)
-                        if uid2 is not None:
-                            return uid2
-                return None
-            uid = _find_uid(raw)
+        ids = extract_fields(
+            payload,
+            field_keys=NAPCAT_SOURCE_ID_KEYS,
+            value_type=int,
+            allow_zero=False,
+        )
+        uid = ids.get("user_id")
+        gid = ids.get("group_id")
         if isinstance(uid, int):
             self._last_user = uid
-        # 同步记录群 ID（如存在）。
-        gid = payload.get("group_id")
-        if not isinstance(gid, int):
-            # 兜底：从 raw 原始负载继续查找。
-            raw = payload.get("raw")
-            if isinstance(raw, dict):
-                gid = raw.get("group_id")
-        if isinstance(gid, int) and gid != 0:
+        if isinstance(gid, int):
             self._last_group = gid
 
     async def _on_speak(self, event: BaseEvent):
-        if self._last_user is None:
+        targets = resolve_event_fields(
+            event,
+            field_keys=NAPCAT_TARGET_ID_KEYS,
+            payload_attr="payload",
+            value_type=int,
+            allow_zero=False,
+        )
+        target_user_id = targets.get("target_user_id")
+        target_group_id = targets.get("target_group_id")
+
+        if target_user_id is None and target_group_id is None and self._last_user is None:
+            logger.debug("[NapcatResponder] 无可用目标用户，跳过回发")
             return
         # ``event.payload`` 可能有多种形态：
         #
@@ -114,6 +116,7 @@ class NapcatResponder:
 
         logger.debug(
             f"[NapcatResponder] _on_speak 收到 event={event!r} text={text!r} "
+            f"target_user={target_user_id} target_group={target_group_id} "
             f"last_user={self._last_user} last_group={self._last_group}"
         )
 
@@ -122,6 +125,14 @@ class NapcatResponder:
             return
 
         # 优先按群聊上下文回复，否则回私聊。
+        if isinstance(target_group_id, int) and target_group_id != 0:
+            await self._client.reply_group(target_group_id, text)
+            return
+
+        if isinstance(target_user_id, int):
+            await self._client.reply(target_user_id, text)
+            return
+
         if self._last_group is not None:
             await self._client.reply_group(self._last_group, text)
         elif self._last_user is not None:

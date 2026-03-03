@@ -1,16 +1,20 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Dict, Any, Literal
+from typing import Any, Dict, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from cradle.utils.logger import logger
+
 
 class LLMConfig(BaseModel):
     """LLM 调用参数（支持云端API与本地内嵌模式）"""
     model_config = ConfigDict(frozen=True, extra="ignore")
-    
+
     provider: str = Field(
         default="openai",
         description="后端类型: 'openai' (云端/兼容API) 或 'local_embedded' (本地内嵌)",
         examples=["openai", "local_embedded"]
     )
-    
+
     # --- OpenAI Remote Mode Configs ---
     api_key: str = Field(
         default="",
@@ -35,6 +39,10 @@ class LLMConfig(BaseModel):
         default="",
         description="[Local] GGUF 模型文件的绝对路径"
     )
+    local_clip_model_path: str = Field(
+        default="",
+        description="[Local] CLIP Projector (mmproj) 模型路径 (仅多模态模型需要)"
+    )
     n_gpu_layers: int = Field(
         default=-1,
         description="[Local] 卸载到 GPU 的层数 (-1=全部, 0=纯CPU)"
@@ -42,6 +50,14 @@ class LLMConfig(BaseModel):
     n_ctx: int = Field(
         default=4096,
         description="[Local] 上下文窗口大小"
+    )
+    n_batch: int = Field(
+        default=512,
+        description="[Local] 批处理大小 (Prompt Processing Speed)"
+    )
+    flash_attn: bool = Field(
+        default=False,
+        description="[Local] 是否启用 Flash Attention (仅支持特定构建及硬件)"
     )
     # 控制本地模型是否允许自动从远端下载（默认关闭，出于安全与合规考虑）
     auto_download: bool = Field(
@@ -56,22 +72,27 @@ class LLMConfig(BaseModel):
         description="创造性温度（0.0=严谨，2.0=奔放）"
     )
     max_tokens: int = Field(
-        default=1024,
+        default=512,
         ge=128, le=8192,
         description="单次回复最大 token 数"
+    )
+    repetition_penalty: float = Field(
+        default=1.1,
+        ge=0.0, le=2.0,
+        description="重复惩罚系数 (1.0=无惩罚，>1.0=减少重复)"
     )
 
 
 class PersonaConfig(BaseModel):
     """数字生命的核心身份定义（所有字段含精心设计的默认值）"""
     model_config = ConfigDict(
-        frozen=True,  #  本质数据不可变（类型系统级保护）
+        frozen=True,  # 本质数据不可变（类型系统级保护）
         extra="ignore",
         json_schema_extra={
             "description": "Selrena 本质配置：定义'我是谁'"
         }
     )
-    
+
     name: str = Field(
         default="月见（Selrena）",
         description="数字生命名称",
@@ -103,7 +124,7 @@ class PersonaConfig(BaseModel):
         description="背景故事（构建共情基础）"
     )
     dialogue_style: str = Field(
-        default="*   **语调**: 轻松、偶尔戏谑、带有跳跃性。不要使用翻译腔或过于书面化的长句。",
+        default="*   **语调**: 轻松、偶尔戏谑、带有跳跃性。不要使用翻译腔或过于书面化的长句。回复务必简短精炼，不要啰嗦。",
         description="对话风格指导（Tone & Style）"
     )
     emotion_control: str = Field(
@@ -111,7 +132,7 @@ class PersonaConfig(BaseModel):
         description="语音情感控制指令 (Voice Emotion Control)"
     )
     taboos: str = Field(
-        default="*   **禁忌**: 禁止自称“我作为一个人工智能”、“我只是程序”。禁止过度的服务型语气。",
+        default="*   **禁忌**: 禁止自称“我作为一个人工智能”、“我只是程序”。禁止过度的服务型语气。禁止长篇大论。",
         description="禁忌与限制规则"
     )
     system_prompt_template: str = Field(
@@ -133,7 +154,7 @@ class PersonaConfig(BaseModel):
         ),
         description="系统提示模板（支持 {name}/{role}/{appearance}/{character_core}/{likes}/{dialogue_style}/{emotion_control}/{taboos} 等占位符）"
     )
-    
+
     def get_system_prompt(self) -> str:
         """生成最终系统提示（本质层专属业务逻辑）"""
         return self.system_prompt_template.format(
@@ -151,34 +172,58 @@ class PersonaConfig(BaseModel):
 
 
 class BrainStrategyConfig(BaseModel):
-    """混合动力大脑策略配置 (Hybrid Brain Strategy)"""
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    """
+    大脑调度策略配置 (Brain Routing Strategy)。
     
-    enabled: bool = Field(
-        default=False,
-        description="是否启用混合/API模式主开关"
+    定义 Agent 如何选择和组合不同的 LLM 后端来处理任务。
+    支持单一模型通吃或多模型分工协作。
+    """
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    routing_mode: Literal["single_multimodal", "split_tasks"] = Field(
+        default="split_tasks",
+        description="路由模式：'single_multimodal' (单模型全能) 或 'split_tasks' (专家分工)"
     )
-    api_provider: str = Field(
-        default="qwen",
-        description="云端模式使用的 LLM 服务商 (对应 providers 中的 key)"
+
+    core_provider: str = Field(
+        default="local_embedded",
+        description="核心思考服务商 (The Brain)：无论何种模式，负责最终逻辑推理和对话生成的模型。"
     )
+
     fallback_to_local: bool = Field(
         default=True,
-        description="当 API 调用失败时，是否自动降级回本地模型"
+        description="容灾开关：当云端服务不可用时，是否自动降级到本地模型"
     )
     module_map: Dict[str, str] = Field(
-        default_factory=lambda: {"vision": "openai", "complex_logic": "qwen"},
-        description="模块级路由映射 (module_name -> provider_key)。例如视觉强制走OpenAI，复杂逻辑走Qwen。"
+        default_factory=lambda: {"vision": "qwen"},
+        description="感知专家映射表 (The Senses)：仅定义负责感知任务的模型 (如 vision, audio)。不应包含逻辑核心。"
     )
+
+
+class MemoryConfig(BaseModel):
+    """记忆系统配置"""
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    enabled: bool = Field(default=True, description="是否启用长期记忆")
+    model_path: str = Field(default="", description="Embedding模型本地路径")
+    hf_repo: str = Field(default="moka-ai/m3e-small", description="Embedding模型HuggingFace仓库")
+    auto_download: bool = Field(default=True, description="是否自动下载模型")
+    provider_auto_download: bool = Field(default=False, description="是否允许Provider自动下载")
+    short_term_window: int = Field(default=20, description="短期记忆最大上下文轮数")
 
 
 class SoulConfig(BaseModel):
     """灵魂交互策略"""
     model_config = ConfigDict(frozen=True, extra="ignore")
-    
-    active_provider: str = Field(
-        default="local_embedded",
-        description="默认的首选 LLM 服务商 (通常是 local_embedded)"
+
+    persona: PersonaConfig = Field(
+        default_factory=PersonaConfig,
+        description="人格设定"
+    )
+
+    memory: MemoryConfig = Field(
+        default_factory=MemoryConfig,
+        description="记忆系统配置"
     )
 
     strategy: BrainStrategyConfig = Field(
@@ -190,9 +235,9 @@ class SoulConfig(BaseModel):
         default_factory=lambda: {
             "local_embedded": LLMConfig(
                 provider="local_embedded",
-                local_model_path="D:/elise/Cradle_Selrena/assets/models/Qwen2.5-7B-Instruct-Q3_K_M.gguf",
+                local_model_path="D:/elise/Cradle_Selrena/assets/models/gemma-3-4b-it-Q5_K_M.gguf",
                 n_gpu_layers=-1,
-                n_ctx=4096,
+                n_ctx=8192,
                 temperature=0.7,
                 max_tokens=1024,
                 auto_download=False
@@ -201,48 +246,12 @@ class SoulConfig(BaseModel):
                 provider="openai",
                 api_key="",
                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                model="qwen-plus",
-                api_mode="responses",
+                model="qwen-vl-plus",
+                api_mode="chat",
                 temperature=0.7,
                 max_tokens=2048
             ),
-            "deepseek": LLMConfig(
-                provider="openai",
-                api_key="",
-                base_url="https://api.deepseek.com",
-                model="deepseek-chat",
-                temperature=0.6,
-                max_tokens=2048
-            ),
-            "openai": LLMConfig(
-                provider="openai",
-                api_key="",
-                base_url="https://api.openai.com/v1",
-                model="gpt-4o",
-                temperature=0.8,
-                max_tokens=1024
-            )
-        },
-        description="LLM 服务商配置列表"
-    )
-    
-    persona: PersonaConfig = Field(
-        default_factory=PersonaConfig,
-        description="数字生命人设配置"
-    )
-    mock_response: str = Field(
-        default="我听见你的心跳了呢~ 今天想和Selrena聊什么呀？",
-        description="情感模拟模式回复模板（{user} 可替换用户输入片段）"
-    )
-    memory: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "enabled": True,
-            "model_path": "",
-            "hf_repo": "moka-ai/m3e-small",
-            "auto_download": True,
-            "provider_auto_download": False,
-        },
-        description="长期记忆模块的配置，包括是否启用和模型路径"
+        }
     )
 
     @model_validator(mode="after")
@@ -250,12 +259,15 @@ class SoulConfig(BaseModel):
         """校验 provider 引用，避免配置拼写错误延迟到运行期。"""
         if not self.providers:
             raise ValueError("providers 不能为空。")
-
-        if self.active_provider not in self.providers:
-            raise ValueError(f"active_provider='{self.active_provider}' 不存在于 providers 中。")
-
-        if self.strategy.api_provider not in self.providers:
-            raise ValueError(f"strategy.api_provider='{self.strategy.api_provider}' 不存在于 providers 中。")
+        
+        if self.strategy.core_provider not in self.providers:
+            # 尝试回退到第一个可用的 provider
+            fallback = next(iter(self.providers.keys()))
+            logger.warning(f"Config Warning: Core provider '{self.strategy.core_provider}' not found. Fallback to '{fallback}'.")
+            # Hack: 由于 frozen=True，这里其实无法修改 self，只能抛出异常或在外部处理
+            # 这里选择严格报错，强迫用户修配置文件
+            raise ValueError(
+                f"strategy.core_provider='{self.strategy.core_provider}' 不存在于 providers 中。请检查 strategy.core_provider 是否配置正确。")
 
         invalid_modules = {
             module: provider
@@ -263,14 +275,15 @@ class SoulConfig(BaseModel):
             if provider not in self.providers
         }
         if invalid_modules:
-            raise ValueError(f"strategy.module_map 存在无效 provider: {invalid_modules}")
+            raise ValueError(
+                f"strategy.module_map 存在无效 provider: {invalid_modules}")
 
         return self
-    
+
     @property
     def llm(self) -> LLMConfig:
         """获取当前激活的 LLM 配置 (兼容旧代码接口)"""
-        return self.providers.get(self.active_provider, next(iter(self.providers.values())))
+        return self.providers.get(self.strategy.core_provider, next(iter(self.providers.values())))
 
     @property
     def is_mock_mode(self) -> bool:

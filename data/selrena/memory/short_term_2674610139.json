@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "月见，在吗",
+    "timestamp": 1772516236.671494,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "嗯，在呢。今天天气…还行吧。有什么事吗？",
+    "timestamp": 1772516236.6725,
+    "metadata": {}
+  },
+  {
+    "role": "user",
+    "content": "月见，在吗",
+    "timestamp": 1772516753.839352,
+    "metadata": {}
+  },
+  {
+    "role": "assistant",
+    "content": "在啦，在啦。你又来找我了？是不是有什么有趣的事情发生？快说快说！",
+    "timestamp": 1772516753.840022,
+    "metadata": {}
+  }
+]

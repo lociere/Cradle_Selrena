@@ -1,6 +1,8 @@
 from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class EnvSettings(BaseSettings):
     """
@@ -18,29 +20,38 @@ class EnvSettings(BaseSettings):
     SELRENA_LOG_LEVEL: str = Field("INFO", description="日志级别")
 
     # --- Napcat (QQ Bot) ---
-    SELRENA_NAPCAT_ENABLE: Optional[bool] = Field(None, description="是否启用 Napcat")
-    SELRENA_NAPCAT_ACCOUNT: Optional[int] = Field(None, description="Napcat 账号")
-    SELRENA_NAPCAT_TOKEN: Optional[str] = Field(None, description="Napcat Token")
+    SELRENA_NAPCAT_ENABLE: Optional[bool] = Field(
+        None, description="是否启用 Napcat")
+    SELRENA_NAPCAT_ACCOUNT: Optional[int] = Field(
+        None, description="Napcat 账号")
+    SELRENA_NAPCAT_TOKEN: Optional[str] = Field(
+        None, description="Napcat Token")
 
     # --- Perception ---
-    SELRENA_PERCEPTION_STRICT_WAKE_WORD: Optional[bool] = Field(None, description="严格唤醒词模式")
-    SELRENA_PERCEPTION_VISION_ENABLED: Optional[bool] = Field(None, description="是否启用视觉能力")
+    SELRENA_PERCEPTION_STRICT_WAKE_WORD: Optional[bool] = Field(
+        None, description="严格唤醒词模式")
+    SELRENA_PERCEPTION_VISION_ENABLED: Optional[bool] = Field(
+        None, description="是否启用视觉能力")
 
     # --- Soul Strategy ---
-    SELRENA_SOUL_ACTIVE_PROVIDER: Optional[str] = Field(None, description="当前激活的 LLM Provider")
-    SELRENA_SOUL_STRATEGY_ENABLED: Optional[bool] = Field(None, description="是否启用混合策略")
-    SELRENA_SOUL_STRATEGY_API_PROVIDER: Optional[str] = Field(None, description="云端 API Provider")
-    SELRENA_SOUL_STRATEGY_FALLBACK_TO_LOCAL: Optional[bool] = Field(None, description="是否允许回退到本地")
+    SELRENA_SOUL_STRATEGY_API_PROVIDER: Optional[str] = Field(
+        None, description="云端 API Provider")
+    SELRENA_SOUL_STRATEGY_FALLBACK_TO_LOCAL: Optional[bool] = Field(
+        None, description="是否允许回退到本地")
 
     # --- API Keys (Explicitly Defined) ---
     # 遵循 <PROVIDER>_API_KEY 的命名规范
     OPENAI_API_KEY: Optional[str] = Field(None, description="OpenAI API Key")
-    DEEPSEEK_API_KEY: Optional[str] = Field(None, description="DeepSeek API Key")
-    QWEN_API_KEY: Optional[str] = Field(None, description="Qwen/DashScope API Key")
-    DASHSCOPE_API_KEY: Optional[str] = Field(None, description="Alias for Qwen API Key")
-    
+    DEEPSEEK_API_KEY: Optional[str] = Field(
+        None, description="DeepSeek API Key")
+    QWEN_API_KEY: Optional[str] = Field(
+        None, description="Qwen/DashScope API Key")
+    DASHSCOPE_API_KEY: Optional[str] = Field(
+        None, description="Alias for Qwen API Key")
+
     # --- Other Secrets ---
     VTS_TOKEN: Optional[str] = Field(None, description="VTS Token")
+
 
 # 全局单例
 env_settings = EnvSettings()

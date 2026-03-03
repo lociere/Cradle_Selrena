@@ -1,44 +1,75 @@
-from typing import Any, Dict, Tuple
+from __future__ import annotations
+
+from typing import Any, Mapping, MutableMapping, Tuple
 
 
-def set_by_path(data: Dict[str, Any], path: str, value: Any):
-    keys = path.split('.')
-    current = data
+def _normalize_path(path: str, separator: str = ".") -> list[str]:
+    return [segment for segment in path.split(separator) if segment]
+
+
+def set_by_path(
+    data: MutableMapping[str, Any],
+    path: str,
+    value: Any,
+    *,
+    separator: str = ".",
+):
+    keys = _normalize_path(path, separator)
+    if not keys:
+        raise ValueError("path 不能为空")
+
+    current: MutableMapping[str, Any] = data
     for key in keys[:-1]:
-        current = current.setdefault(key, {})
+        existing = current.get(key)
+        if not isinstance(existing, MutableMapping):
+            existing = {}
+            current[key] = existing
+        current = existing
     current[keys[-1]] = value
 
 
-def get_by_path(data: Dict[str, Any], path: str, default: Any = None) -> Any:
-    keys = path.split('.')
-    current = data
+def get_by_path(
+    data: Mapping[str, Any],
+    path: str,
+    default: Any = None,
+    *,
+    separator: str = ".",
+) -> Any:
+    keys = _normalize_path(path, separator)
+    if not keys:
+        return default
+
+    current: Any = data
     for key in keys:
-        if not isinstance(current, dict) or key not in current:
+        if not isinstance(current, Mapping) or key not in current:
             return default
         current = current[key]
     return current
 
 
-def has_path(data: Dict[str, Any], path: str) -> bool:
+def has_path(data: Mapping[str, Any], path: str, *, separator: str = ".") -> bool:
     sentinel = object()
-    return get_by_path(data, path, sentinel) is not sentinel
+    return get_by_path(data, path, sentinel, separator=separator) is not sentinel
 
 
-def merge_dicts(source: Dict[str, Any], incoming: Dict[str, Any]):
+def merge_dicts(source: MutableMapping[str, Any], incoming: Mapping[str, Any]):
     for key, value in incoming.items():
-        if isinstance(value, dict) and key in source and isinstance(source[key], dict):
+        if isinstance(value, Mapping) and key in source and isinstance(source[key], MutableMapping):
             merge_dicts(source[key], value)
         else:
             source[key] = value
 
 
-def fill_defaults(current: Dict[str, Any], defaults: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+def fill_defaults(
+    current: MutableMapping[str, Any],
+    defaults: Mapping[str, Any],
+) -> Tuple[bool, MutableMapping[str, Any]]:
     updated = False
     for key, default_val in defaults.items():
         if key not in current:
             current[key] = default_val
             updated = True
-        elif isinstance(default_val, dict) and isinstance(current.get(key), dict):
+        elif isinstance(default_val, Mapping) and isinstance(current.get(key), MutableMapping):
             sub_updated, _ = fill_defaults(current[key], default_val)
             if sub_updated:
                 updated = True

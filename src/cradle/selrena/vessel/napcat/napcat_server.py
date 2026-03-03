@@ -11,10 +11,11 @@ import json
 from typing import Any
 
 import websockets
-from cradle.utils.logger import logger
+
 from cradle.core.config_manager import global_config
+from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.selrena.synapse.event_bus import global_event_bus
-from cradle.schemas.protocol.events import BaseEvent
+from cradle.utils.logger import logger
 
 
 class NapcatServer:
@@ -36,6 +37,7 @@ class NapcatServer:
         # 某些 WebSocket 库不接受带逗号的子协议字符串，但 Napcat 常发送
         # "onebot,<token>"。因此这里不写死 `subprotocols`，改用自定义
         # 选择器，按客户端请求动态校验并回显可接受的子协议。
+
         def select_subprotocol(connection, client_protocols):
             # client_protocols 来自 Sec-WebSocket-Protocol 请求头。
             # 遍历并挑选首个可接受协议，同时记录关键令牌信息，便于排查握手失败。
@@ -63,13 +65,24 @@ class NapcatServer:
             logger.info("[NapcatServer] 未发现兼容的子协议")
             return None
 
-        self._server = await websockets.serve(
-            self._handler,
-            "0.0.0.0",
-            port,
-            subprotocols=None,
-            select_subprotocol=select_subprotocol,
-        )
+        try:
+            self._server = await websockets.serve(
+                self._handler,
+                "0.0.0.0",
+                port,
+                subprotocols=None,
+                select_subprotocol=select_subprotocol,
+            )
+        except OSError as exc:
+            if exc.errno == 10048:
+                logger.error(
+                    f"[NapcatServer] 端口 {port} 已被占用，已跳过 NapcatServer 启动。"
+                )
+                logger.error(
+                    "[NapcatServer] 请结束占用该端口的进程，或修改 napcat.listen_port 后重启。"
+                )
+                return
+            raise
         self.bus.subscribe("napcat.send", self.on_send)
         logger.info(f"[NapcatServer] 正在监听端口 {port}")
         # 注册到生命周期，便于系统统一关闭。
@@ -114,7 +127,8 @@ class NapcatServer:
                     # 已是 Python 对象（list/dict 等），直接使用。
                     data = msg
 
-                event = BaseEvent(name="napcat.event", payload=data, source="NapcatServer")
+                event = BaseEvent(name="napcat.event",
+                                  payload=data, source="NapcatServer")
                 await self.bus.publish(event)
         except Exception as e:
             logger.error(f"[NapcatServer] 连接处理出错: {e}")

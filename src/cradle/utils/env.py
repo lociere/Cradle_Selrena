@@ -1,7 +1,7 @@
-import sys
 import os
 import platform
-from typing import List, Optional
+import sys
+from typing import Callable, List, Optional, TypeVar
 
 """
 Cradle Selrena Environment Utility
@@ -43,60 +43,66 @@ IS_MACOS = _SYSTEM == "darwin"
 # 3. 运行时上下文 (Runtime Context)
 # -----------------------------------------------------------------------------
 
+
 def _is_debugger_attached() -> bool:
     """检测是否有调试器挂载 (如 VS Code Debugger)"""
     gettrace = getattr(sys, 'gettrace', None)
     return (gettrace() is not None) if gettrace else False
 
+
 IS_DEBUGGER_ATTACHED = _is_debugger_attached()
 
 # 检测是否运行在 Docker 或 K8s 容器中
-IS_CONTAINER = os.path.exists('/.dockerenv') or os.path.exists('/run/secrets/kubernetes.io')
+IS_CONTAINER = os.path.exists(
+    '/.dockerenv') or os.path.exists('/run/secrets/kubernetes.io')
+
+T = TypeVar("T")
+
+
+def _env_parse(key: str, parser: Callable[[str], T], default: T) -> T:
+    """通用环境变量解析器：失败或缺失时回退默认值。"""
+    val = os.getenv(key)
+    if val is None:
+        return default
+    try:
+        return parser(val)
+    except Exception:
+        return default
 
 # -----------------------------------------------------------------------------
 # 4. 获取器工具 (Typed Getters)
 # -----------------------------------------------------------------------------
 
+
 def env_bool(key: str, default: bool = False) -> bool:
     """安全的从环境变量获取布尔值 (支持 yes/true/1 等变体)"""
-    val = os.getenv(key)
-    if val is None:
-        return default
-    return val.lower() in ("true", "1", "yes", "on", "enable")
+    return _env_parse(
+        key,
+        lambda raw: raw.strip().lower() in ("true", "1", "yes", "on", "enable"),
+        default,
+    )
+
 
 def env_int(key: str, default: int = 0) -> int:
     """安全的从环境变量获取整数"""
-    val = os.getenv(key)
-    if val is None:
-        return default
-    try:
-        return int(val)
-    except ValueError:
-        return default
+    return _env_parse(key, lambda raw: int(raw.strip()), default)
+
 
 def env_float(key: str, default: float = 0.0) -> float:
     """安全的从环境变量获取浮点值"""
-    val = os.getenv(key)
-    if val is None:
-        return default
-    try:
-        return float(val)
-    except ValueError:
-        return default
+    return _env_parse(key, lambda raw: float(raw.strip()), default)
 
 
 def env_str(key: str, default: str = "") -> str:
     """安全的从环境变量获取字符串（自动 strip）"""
-    val = os.getenv(key)
-    if val is None:
-        return default
-    return val.strip()
+    return _env_parse(key, lambda raw: raw.strip(), default)
 
 
 def env_list(key: str, separator: str = ",", default: Optional[List[str]] = None) -> List[str]:
     """将环境变量按分隔符切分为列表"""
-    val = os.getenv(key)
-    if val is None:
-        return default or []
-    # 过滤空字符串并去除首尾空格
-    return [item.strip() for item in val.split(separator) if item.strip()]
+    fallback = default or []
+    return _env_parse(
+        key,
+        lambda raw: [item.strip() for item in raw.split(separator) if item.strip()],
+        fallback,
+    )

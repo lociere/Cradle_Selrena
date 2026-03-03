@@ -30,12 +30,16 @@ dependencies = [
     "openai>=1.0",
     "langchain",
     "langgraph",
-    "numpy",
+    "numpy>=1.20,<2.4",  # Pin numpy to support numba & llama-cpp-python
     "pillow",
     "pyautogui",
     "edge-tts",
     "requests",
-    "websockets>=11.0.3",  # WebSocket client for Napcat and other services
+    "websockets>=11.0.3",
+    "soundfile",         # Essential for librosa audio processing
+    "chromadb",          # Vector Store
+    "sentence-transformers", # Text Embedding
+    "llama-cpp-python>=0.3.16 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124", # Force GPU version
 ]
 
 # optional groups (extras) can be added as needed

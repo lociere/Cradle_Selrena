@@ -1,10 +1,10 @@
-import re
 import json
+import re
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-
-THINK_BLOCK_RE = re.compile(r'<think>.*?</think>', flags=re.DOTALL | re.IGNORECASE)
+THINK_BLOCK_RE = re.compile(r'<think>.*?</think>',
+                            flags=re.DOTALL | re.IGNORECASE)
 MARKDOWN_FENCE_RE = re.compile(r'```(?:\w+)?\s*(.*?)\s*```', flags=re.DOTALL)
 ACTION_BRACKET_RE = re.compile(r"[\（\(\【\*].*?[\）\)\】\*]")
 EMOTION_TAG_RE = re.compile(
@@ -15,6 +15,7 @@ HTML_TAG_RE = re.compile(r"<[^>]+>")
 MULTI_SPACE_RE = re.compile(r"[ \t]+")
 MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
 ASR_TAG_RE = re.compile(r"<\|.*?\|>")
+LEADING_EMOTION_TAG_RE = re.compile(r"^\s*\[([a-zA-Z_\-]{1,32})\]\s*")
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,28 @@ def clean_for_dialogue(text: str) -> str:
         ),
     )
 
+
+def extract_emotion_and_clean_text(text: str) -> Tuple[str, str]:
+    """提取前缀情绪标签并输出对外展示文本（去标签/去动作）。"""
+    raw = (text or "").strip()
+    if not raw:
+        return "", "neutral"
+
+    detected_emotion = "neutral"
+    while True:
+        match = LEADING_EMOTION_TAG_RE.match(raw)
+        if not match:
+            break
+        detected_emotion = match.group(1).lower()
+        raw = raw[match.end():].lstrip()
+
+    cleaned = clean_for_dialogue(raw)
+    if not cleaned:
+        cleaned = clean_for_dialogue(text)
+
+    return cleaned, detected_emotion
+
+
 def _extract_balanced_json(text: str) -> Optional[str]:
     '''
     辅助函数：通过堆栈拘束寻找第一个完整的json对象/数组字符串
@@ -137,11 +160,11 @@ def _extract_balanced_json(text: str) -> Optional[str]:
                 stack.pop()
                 # 堆栈空了，说睦找到了一个完整的闭环
                 if not stack:
-                    return text[start_idx : i + 1]
+                    return text[start_idx: i + 1]
                 else:
                     pass
 
-    return None # 如果找不到，返回None
+    return None  # 如果找不到，返回None
 
 
 def _try_parse_json(text: str) -> Optional[Union[Dict[str, Any], List[Any], Any]]:
@@ -149,7 +172,7 @@ def _try_parse_json(text: str) -> Optional[Union[Dict[str, Any], List[Any], Any]
         return json.loads(text)
     except (json.JSONDecodeError, TypeError, ValueError):
         return None
-                
+
 
 def extract_json_from_text(text: str) -> Optional[Union[Dict[str, Any], List[Any], Any]]:
     '''
@@ -169,7 +192,7 @@ def extract_json_from_text(text: str) -> Optional[Union[Dict[str, Any], List[Any
             preserve_newlines=True,
         ),
     )
-    
+
     # 1. Markdown 代码块
     json_match = MARKDOWN_FENCE_RE.search(text)
     if json_match:
@@ -184,7 +207,7 @@ def extract_json_from_text(text: str) -> Optional[Union[Dict[str, Any], List[Any
         parsed = _try_parse_json(candidate)
         if parsed is not None:
             return parsed
-    
+
     # 3. 原始暴力尝试
     # 有时候 LLM 给出的 JSON 并不完整或有转义问题，尝试找最大范围再碰碰运气
     start = text.find('{')

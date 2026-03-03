@@ -1,28 +1,40 @@
 import json
 import os
-from typing import List, Dict, Any
-from cradle.utils.path import ProjectPath
+import re
+from typing import Any, Dict, List
+
+from cradle.schemas.domain.chat import Message
 from cradle.utils.logger import logger
-from cradle.schemas import Message
+from cradle.utils.path import ProjectPath
+
 
 class ShortTermMemory:
     """
     短期记忆管理器 (持久化 + 滑动窗口)
     负责存储当前对话上下文，并在系统重启时恢复记忆。
     """
-    def __init__(self, max_history_len: int = 20):
+
+    def __init__(self, max_history_len: int = 20, session_key: str = "default"):
         self.max_history_len = max_history_len  # 只保留最近 N 轮对话
-        self.file_path = ProjectPath.DATA_MEMORY / "short_term.json"
+        safe_key = self._sanitize_session_key(session_key)
+        self.file_path = ProjectPath.DATA_MEMORY / \
+            f"short_term_{safe_key}.json"
         self.messages: List[Message] = []
-        
+
         # 初始化时尝试加载现有记忆
         self.load()
+
+    @staticmethod
+    def _sanitize_session_key(session_key: str) -> str:
+        value = (session_key or "default").strip().lower()
+        value = re.sub(r"[^a-z0-9_\-]", "_", value)
+        return value[:64] if value else "default"
 
     def add(self, role: str, content: str):
         """添加一条新记忆"""
         msg = Message(role=role, content=content)
         self.messages.append(msg)
-        
+
         # 触发自动修剪和保存
         self._trim()
         self.save()
@@ -32,13 +44,14 @@ class ShortTermMemory:
         获取用于 LLM 调用的消息列表
         :param include_system: 是否临时在头部拼接 System Prompt
         """
-        payload = [msg.model_dump(include={'role', 'content'}) for msg in self.messages]
-        
+        payload = [msg.model_dump(include={'role', 'content'})
+                   for msg in self.messages]
+
         if include_system and system_prompt:
             # System Prompt 永远在最前，且不算在滑动窗口内
             system_msg = {"role": "system", "content": system_prompt}
             return [system_msg] + payload
-            
+
         return payload
 
     def save(self):

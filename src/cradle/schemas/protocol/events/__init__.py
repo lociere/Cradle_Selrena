@@ -1,11 +1,12 @@
-from .base import BaseEvent
-from .perception import PerceptionEvent, AudioInputEvent, VisualInputEvent, SubjectiveInterval, Modality
-from .action import ActionEvent, ActionType, ActionLevel, SpeakAction, UIActionEvent
-from .reflex import ReflexSignal, ReflexType
+"""Event schema namespace.
 
-__all__ = [
-    "BaseEvent",
-    "PerceptionEvent", "AudioInputEvent", "VisualInputEvent", "SubjectiveInterval", "Modality",
-    "ActionEvent", "ActionType", "ActionLevel", "SpeakAction", "UIActionEvent",
-    "ReflexSignal", "ReflexType"
-]
+保持显式依赖：
+- 基类: ``events.base``
+- 动作: ``events.action``
+- 感知: ``events.perception``
+- 反射: ``events.reflex``
+"""
+
+from . import action, base, perception, reflex
+
+__all__ = ["base", "action", "perception", "reflex"]

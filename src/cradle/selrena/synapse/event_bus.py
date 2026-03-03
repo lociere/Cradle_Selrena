@@ -1,17 +1,21 @@
 import asyncio
-from typing import Callable, Any, Dict, List
+import inspect
 from collections import defaultdict
-from cradle.utils.logger import logger
+from typing import Any, Callable, Dict, List
+
 from cradle.schemas.protocol.events.base import BaseEvent
+from cradle.utils.logger import logger
+
 
 class EventBus:
     """
     神经中枢,负责在身体各器官和灵魂之间传递电信号
-    
+
     Architecture V2 Update:
     - 废弃了旧的 `Event` (Dataclass)
     - 全面采用 `BaseEvent` (Pydantic Model) 及其子类
     """
+
     def __init__(self):
         self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
         # 接收者映射: ReceiverObj -> List[(EventName, Callback)]
@@ -23,17 +27,29 @@ class EventBus:
         器官可以订阅特定的神经信号
         return: unsubscribe callback (一个用于取消订阅的函数)
         """
-        self._subscribers[event_name].append(callback)
-        
+        normalized_name = str(event_name).strip().lower()
+        if not normalized_name:
+            raise ValueError("event_name 不能为空。")
+
+        if callback in self._subscribers[normalized_name]:
+            logger.debug(
+                f"[神经连接] 跳过重复订阅: 信号={normalized_name}, 接收者={callback.__qualname__}")
+            def noop_unsubscribe():
+                return None
+            return noop_unsubscribe
+
+        self._subscribers[normalized_name].append(callback)
+
         # 自动识别并记录接收者 (如果是绑定方法)
         receiver = getattr(callback, "__self__", None)
         if receiver:
-            self._receivers[receiver].append((event_name, callback))
-            
-        logger.debug(f"[神经连接] 模块已接入: 信号={event_name}, 接收者={callback.__qualname__}")
-        
+            self._receivers[receiver].append((normalized_name, callback))
+
+        logger.debug(
+            f"[神经连接] 模块已接入: 信号={normalized_name}, 接收者={callback.__qualname__}")
+
         def unsubscribe():
-            self.unsubscribe(event_name, callback)
+            self.unsubscribe(normalized_name, callback)
         return unsubscribe
 
     def unsubscribe_receiver(self, receiver: Any):
@@ -52,45 +68,60 @@ class EventBus:
 
     def unsubscribe(self, event_name: str, callback: Callable):
         """断开特定的一根神经连接"""
+        normalized_name = str(event_name).strip().lower()
+
         # 1. 从订阅表移除
-        if event_name in self._subscribers:
+        if normalized_name in self._subscribers:
             try:
-                self._subscribers[event_name].remove(callback)
-                # logger.debug(f"[神经断开] 信号={event_name}, 接收者={callback.__qualname__}")
-                if not self._subscribers[event_name]:
-                    del self._subscribers[event_name]
+                self._subscribers[normalized_name].remove(callback)
+                if not self._subscribers[normalized_name]:
+                    del self._subscribers[normalized_name]
             except ValueError:
                 pass
-        
+
         # 2. 从接收者映射表移除 (保持一致性)
         receiver = getattr(callback, "__self__", None)
         if receiver and receiver in self._receivers:
             try:
-                self._receivers[receiver].remove((event_name, callback))
+                self._receivers[receiver].remove((normalized_name, callback))
                 if not self._receivers[receiver]:
                     del self._receivers[receiver]
             except ValueError:
                 pass
 
+    async def _invoke_callback(self, callback: Callable, event: BaseEvent):
+        try:
+            result = callback(event)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:
+            logger.exception(
+                f"[神经异常] 回调执行失败: signal={event.name}, receiver={callback.__qualname__}, error={exc}")
+
+    def _resolve_callbacks(self, event_name: str) -> list[Callable]:
+        callbacks = list(self._subscribers.get(event_name, []))
+        callbacks.extend(self._subscribers.get("*", []))
+        return callbacks
+
     async def publish(self, event: BaseEvent):
         """发送神经信号 (Strict Protocol)"""
         if not isinstance(event, BaseEvent):
-             # 最后的容错警告，但我们应当避免这种情况
-             logger.warning(f"[Protocol Breach] ⚠️ 接收到非标准信号: {type(event)} -> 尝试 Duck Typing 但不推荐")
-        
+            raise TypeError(f"publish 仅接受 BaseEvent，实际为: {type(event)}")
+
         # 统一使用 BaseEvent 接口
         event_name = event.name
         sender = event.source
 
-        if event_name in self._subscribers:
-            # 找到所有通过这根神经连接的器官，并发通知它们
-            callbacks = self._subscribers[event_name]
-            logger.debug(f"[神经冲动] 信号传导: {event_name} (from: {sender}) -> 激活 {len(callbacks)} 个受体")
-            tasks = [cb(event) for cb in callbacks]
-            await asyncio.gather(*tasks)
+        callbacks = self._resolve_callbacks(event_name)
+        if callbacks:
+            logger.debug(
+                f"[神经冲动] 信号传导: {event_name} (from: {sender}) -> 激活 {len(callbacks)} 个受体")
+            tasks = [self._invoke_callback(cb, event) for cb in callbacks]
+            await asyncio.gather(*tasks, return_exceptions=False)
         else:
             # logger.warning(f"[神经信号丢失] 无受体响应: {event_name}")
             pass
+
 
 # 全局单例
 global_event_bus = EventBus()
