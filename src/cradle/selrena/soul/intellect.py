@@ -136,7 +136,11 @@ class SoulIntellect:
         听到用户消息 -> 感知 -> 检索记忆 -> 思考 -> 行动
         """
         payload = event.payload if isinstance(event.payload, dict) else {}
-        text = str(payload.get("text", ""))
+
+        # [Optimized] 既然 Message Schema 已规范化 content 字段，直接提取纯文本即可
+        # 兼容 str 或 List[ContentBlock]，并自动处理提取逻辑
+        text = PayloadSanitizer.extract_pure_text(payload.get("content", ""))
+
         user_id = str(payload.get("user_id", "unknown"))
         target_user_id = payload.get("user_id") if isinstance(
             payload.get("user_id"), int) else None
@@ -184,6 +188,24 @@ class SoulIntellect:
         if not final_content:
              return
 
+        # [Vision Optimization] 专家分工：如果是视觉消息，尝试获取视觉转述用于记忆
+        # 避免将巨大的 Base64 或临时 URL 存入长期记忆
+        vision_caption = ""
+        current_msg_obj = Message(role=user_id if user_id in ["user", "assistant"] else "user", content=final_content)
+        
+        if PayloadSanitizer.has_vision_payload([current_msg_obj]):
+            try:
+                # 让大脑的视觉中心 (Visual Center) 进行转述
+                logger.info("[Soul] 正在调用视觉专家进行记忆转述...")
+                vision_caption = await self.brain.perceive(current_msg_obj)
+                
+                if vision_caption:
+                    logger.info(f"[Soul] 视觉转述完成: {vision_caption[:30]}...")
+                    # 增强用于记忆的纯文本：保留用户原话 + [视觉备注]
+                    perceived_text = f"{perceived_text}\n[Vision Memory: {vision_caption}]".strip()
+            except Exception as ve:
+                logger.warning(f"[Soul] 视觉转述失败，仅存储原始文本: {ve}")
+
         # 3. 构建思考上下文 (Context Window)
         # 确保 Message 的 content 字段接收符合 Schema 的数据
         try:
@@ -194,6 +216,7 @@ class SoulIntellect:
              # 对历史消息进行清洗，确保它们也是有效的 Message 对象
              chat_history_objs = PayloadSanitizer.normalize_messages(chat_history_dicts)
              
+             # 注意：传给 Brain 的是包含原始图片的多模态 content，确保它能“看到”
              context_messages = PromptBuilder.build_context_window(
                 persona_msg,
                 relevant_memories,

@@ -47,27 +47,55 @@ class PromptBuilder:
         Assemble the final prompt chain using Pydantic Models.
         Order: Persona -> Memories -> Chat History -> Current User Message
         Returns: A list of Message objects
-        """
-        # 1. Base Structure
-        context_messages: List[ChatMessage] = []
         
-        # Ensure persona is valid
+        [Normalization]
+        Specifically for local LLMs (llama-cpp), consecutive messages with the same role are merged
+        to strictly adhere to the `System -> User -> Assistant -> User` pattern.
+        """
+        raw_messages: List[ChatMessage] = []
+        
+        # 1. Base Structure - Persona (System)
         if persona_prompt and isinstance(persona_prompt, ChatMessage):
-            context_messages.append(persona_prompt)
+            raw_messages.append(persona_prompt)
 
-        # 2. Inject Memories (if available)
+        # 2. Inject Memories (System) - Merged immediately if possible
         if relevant_memories:
-            # Now build_memory_injection returns a ChatMessage directly
             memory_msg = PromptBuilder.build_memory_injection(relevant_memories)
-            context_messages.append(memory_msg)
+            raw_messages.append(memory_msg)
 
-        # 3. Chat History (Schema Support Only)
+        # 3. Chat History (User/Assistant...)
         for msg in chat_history:
             if isinstance(msg, ChatMessage):
-                context_messages.append(msg)
+                raw_messages.append(msg)
 
-        # 4. Current Message (The Trigger)
-        # Standardize current message creation
-        context_messages.append(ChatMessage(role="user", content=final_content))
+        # 4. Current Message (User)
+        current_msg = ChatMessage(role="user", content=final_content)
+        raw_messages.append(current_msg)
 
-        return context_messages
+        if not raw_messages:
+            return []
+
+        # [Merge Logic]
+        normalized_messages: List[ChatMessage] = []
+        # Use model_copy to prevent mutating original memory objects
+        current_block = raw_messages[0].model_copy()
+
+        for next_msg in raw_messages[1:]:
+            if next_msg.role == current_block.role:
+                # Merge roles
+                # Convert to string for safe merging (assuming text-heavy context for local LLMs)
+                # If content is a list/complex object, we force string conversion to avoid type errors
+                content_a = current_block.content
+                content_b = next_msg.content
+                
+                text_a = content_a if isinstance(content_a, str) else str(content_a)
+                text_b = content_b if isinstance(content_b, str) else str(content_b)
+                
+                current_block.content = f"{text_a}\n\n{text_b}"
+            else:
+                 normalized_messages.append(current_block)
+                 current_block = next_msg.model_copy()
+        
+        normalized_messages.append(current_block)
+
+        return normalized_messages

@@ -248,6 +248,32 @@ class HybridBrainRouter(BaseBrainBackend):
 
         return PromptBuilder.build_fallback_message("generic")
 
+    async def perceive(self, message: ChatMessage) -> str | None:
+        """
+        [Public API] 尝试使用视觉专家转述图片内容
+        如果配置了 Vision Expert，则调用它生成描述；
+        如果是 Single Multimodal 模式且无专门 Expert，则尝试让核心模型描述（暂略，通常由 generate 直接处理）。
+        """
+        is_visual = PayloadSanitizer.is_visual_request([message])
+        if not is_visual:
+            return None
+
+        vision_provider_name = self._vision_provider_name
+        # 尝试获取视觉后端
+        vision_backend = await self._get_or_create_backend(vision_provider_name)
+        
+        # 如果没有专门的 Vision Expert...
+        if not vision_backend:
+             # 检查核心模型是否支持
+             core_backend = await self._get_or_create_backend(self._core_provider_name)
+             if getattr(core_backend, "is_multimodal", False):
+                 vision_backend = core_backend
+             else:
+                 return None 
+
+        return await self._transcribe_visual_content([message], vision_backend)
+
+
     # --- Helpers ---
 
     async def _transcribe_visual_content(self, messages: List[ChatMessage], vision_backend: BaseBrainBackend) -> str:

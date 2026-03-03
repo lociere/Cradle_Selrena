@@ -36,6 +36,15 @@ class BaseBrainBackend(ABC):
         """
         pass
 
+    async def perceive(self, message: ChatMessage) -> str | None:
+        """
+        [Optional] 视觉感知接口 (Visual Perception)。
+        如果后端具备“专家分工”能力 (Expert Division of Labor)，可在此实现单独的视觉转述逻辑。
+        :param message: 单条包含视觉内容的消息
+        :return: 视觉内容的转述文本 (Image Caption)，若不支持或无视觉内容则返回 None
+        """
+        return None
+
     @property
     def is_multimodal(self) -> bool:
         """是否支持多模态输入 (默认为 False，子类可覆盖)"""
