@@ -29,8 +29,14 @@ class MultimodalPreprocessor:
         [Standardization]
         将原始载荷 (OneBot/Napcat Dict) 转换为标准 Message 对象。
         会自动尝试解析 content 字段为 List[ContentBlock]。
+
+        如果载荷已经由 Vessel 预处理过（payload.preprocessed=True），
+        则直接用原始数据构建 Message，跳过二次清洗。
         """
         try:
+            # bypass if already preprocessed by Cortex/other Vessel
+            if isinstance(payload, dict) and payload.get("preprocessed"):
+                return Message(**payload)
             # Create a shallow copy to avoid modifying the original payload
             data = payload.copy()
 

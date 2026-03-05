@@ -5,7 +5,11 @@ from pathlib import Path
 from cradle.schemas.configs.soul import SoulConfig
 from cradle.schemas.domain.chat import Message
 from cradle.schemas.protocol.events.base import BaseEvent
-from cradle.schemas.protocol.events.action import ActionType, SpeakAction
+from cradle.schemas.protocol.events.action import ChannelReplyAction, SpeakAction
+from cradle.schemas.protocol.events.perception import (
+    ExternalMultiModalPayload,
+    InternalMultiModalPayload,
+)
 from cradle.utils.logger import logger
 from cradle.utils.path import ProjectPath
 from cradle.utils.string import extract_emotion_and_clean_text
@@ -61,7 +65,8 @@ class SoulIntellect:
             logger.error(f"[Soul] 长时记忆系统启动失败: {e}", exc_info=True)
 
         # 1.2 预热短时对话记忆 (Light IO) -> 提前加载所有已知用户的对话历史
-        await self._preload_short_term_memories()
+        # [Fix] Remove await since _preload_short_term_memories is no longer async
+        self._preload_short_term_memories()
 
         # --- [Phase 2: 认知核心 (Cognitive Core)] ---
         # 加载大脑/LLM (Heavy Compute/VRAM)
@@ -105,6 +110,16 @@ class SoulIntellect:
         """
         payload = event.payload if isinstance(event.payload, dict) else {}
 
+        typed_payload: ExternalMultiModalPayload | InternalMultiModalPayload | None = None
+        if isinstance(payload, dict):
+            try:
+                if payload.get("is_external_source") is True:
+                    typed_payload = ExternalMultiModalPayload.model_validate(payload)
+                else:
+                    typed_payload = InternalMultiModalPayload.model_validate(payload)
+            except Exception as e:
+                logger.warning(f"[Soul] 感知载荷类型校验失败，回退到兼容模式: {e}")
+
         # [Optimized] 使用 MultimodalPreprocessor 进行消息标准化与预处理
         # 自动去除 CQ 码、腾讯多媒体 URL 等占位符，返回标准化结果
         text, has_visual, is_valid = MultimodalPreprocessor.validate_ingress_payload(payload)
@@ -118,8 +133,12 @@ class SoulIntellect:
         # Soul 不再维护任何"访客"或"外部"会话状态。
         # 对于外部来源 (Napcat)，假定其上传的 Context 已经包含了所需的历史记录（由 Cortex 自行维护）。
         # Soul 只负责维护"主我"(Principal Ego) 的长期记忆流。
-        source = event.source
-        is_external_source = (source == "NapcatClient")
+        # 通过显式语义标记判定是否外部来源，避免误判内部 Vessel (ASR/Vision 等)
+        is_external_source = bool(
+            typed_payload.is_external_source
+            if typed_payload is not None
+            else payload.get("is_external_source", False)
+        ) if isinstance(payload, dict) else False
 
         if is_external_source:
              # 对于外部请求，Soul 不进行任何短时记忆维护
@@ -140,7 +159,7 @@ class SoulIntellect:
 
         # 2. 感知现实 (Perception via Vessel)
         # 强制使用 content，不再依赖 text 回退
-        initial_content = payload.get("content")
+        initial_content = typed_payload.content if typed_payload is not None else payload.get("content")
         
         # [Strict Mode] 如果没有 content，则直接返回
         if not initial_content:
@@ -192,7 +211,13 @@ class SoulIntellect:
              persona_dict = self.persona.build_system_prompt()
              persona_msg = Message(**persona_dict)
              
-             chat_history_dicts = payload.get("external_history") if is_external_source else stm.get_messages()
+             if is_external_source:
+                 if isinstance(typed_payload, ExternalMultiModalPayload):
+                     chat_history_dicts = typed_payload.external_history
+                 else:
+                     chat_history_dicts = payload.get("external_history")
+             else:
+                 chat_history_dicts = stm.get_messages()
              if chat_history_dicts is None:
                  chat_history_dicts = []
                  
@@ -255,12 +280,35 @@ class SoulIntellect:
                 # We removed explicit target binding here; let the Reflex/Router handle it if needed
                 # or simply broadcast to the active channel.
             )
-            # Inject raw targets back for now to keep existing Vessel logic working until further refactor
-            # But conceptually Soul shouldn't care about IDs.
-            if hasattr(action, 'target_user_id'): action.target_user_id = payload.get("user_id")
-            if hasattr(action, 'target_group_id'): action.target_group_id = payload.get("group_id")
-            
             await EventBus.publish(action)
+
+            # 外部来源会话走“渠道回写动作”，由对应 Vessel 处理回发。
+            if is_external_source:
+                source_id = None
+                vessel_id = None
+                source_type = None
+                if isinstance(typed_payload, ExternalMultiModalPayload):
+                    source_id = typed_payload.source_id
+                    vessel_id = typed_payload.vessel_id
+                    source_type = typed_payload.source_type
+                else:
+                    source_id = payload.get("source_id")
+                    vessel_id = payload.get("vessel_id")
+                    source_type = payload.get("source_type")
+
+                channel_action = ChannelReplyAction(
+                    source="Soul",
+                    text=clean_reply_text,
+                    emotion=detected_emotion,
+                    vessel_id=vessel_id,
+                    source_type=source_type,
+                    source_id=str(source_id) if source_id is not None else None,
+                )
+                logger.debug(
+                    f"[Soul] 发布渠道回写动作: vessel={channel_action.vessel_id} "
+                    f"type={channel_action.source_type} id={channel_action.source_id}"
+                )
+                await EventBus.publish(channel_action)
 
         except Exception as e:
             logger.error(f"[Soul] 思考过程崩溃: {e}", exc_info=True)

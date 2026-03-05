@@ -1,10 +1,16 @@
 import re
-import html
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List
+
+from .cleaner import NapcatMessageCleaner
 
 class NapcatMessageParser:
     """
-    Napcat 消息解析器
+    Napcat 消息解析器。
+    
+    职责：
+    1. 解析 CQ 码（OneBot 协议标记）
+    2. 标准化消息链为统一结构
+    3. 提取结构化数据（at、reply、image 等）
     """
     
     @staticmethod
@@ -98,45 +104,3 @@ class NapcatMessageParser:
             
         result["text"] = NapcatMessageCleaner.cleanup_noise("".join(text_parts))
         return result
-
-
-class NapcatMessageCleaner:
-    """
-    Napcat 消息清洗工具 (Refactored from Global Preprocessor)
-    """
-
-    @staticmethod
-    def cleanup_noise(text: str) -> str:
-        """
-        Remove CQ Codes and specific placeholders.
-        This logic is now encapsulated within Napcat module.
-        """
-        if not text:
-            return ""
-
-        # 1. 移除 CQ 码
-        text = re.sub(r'\[CQ:[^\]]+\]', '', text)
-        
-        # 2. 移除特定占位符
-        text = re.sub(r'\[(图片|动画表情|表情|视频|语音|回复)\]', '', text)
-        
-        # 3. 移除多媒体 URL
-        text = NapcatMessageCleaner._cleanup_multimedia_urls(text)
-        
-        # 4. HTML Unescape
-        text = html.unescape(text)
-
-        return text.strip()
-
-    @staticmethod
-    def _cleanup_multimedia_urls(text: str) -> str:
-        """Internal: cleanup腾讯多媒体 URLs"""
-        if not text:
-            return ""
-        patterns = [
-            r'https?://multimedia\.nt\.qq\.com\.cn/[^\s]+',
-            r'https?://(c2cpicdw\.qpic\.cn|groups-pic\.qlogo\.cn|gchat\.qpic\.cn)/[^\s]+'
-        ]
-        for p in patterns:
-            text = re.sub(p, '', text)
-        return text

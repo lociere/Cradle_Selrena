@@ -1,6 +1,41 @@
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Union
+from dataclasses import dataclass
 import time
 from cradle.utils.logger import logger
+from cradle.schemas.protocol.events.perception import PerceptionPayload
+
+@dataclass
+class AttentionTarget:
+    """
+    标准注意力目标 (Standard Attention Target)
+
+    作为系统通用的注意力焦点描述符，解耦具体 Vessel 实现。
+    """
+    vessel_id: str
+    context_type: str  # 对应 source_type (e.g. 'group', 'private')
+    subject_id: str    # 对应 source_id (e.g. '123456')
+
+    @classmethod
+    def from_payload(cls, payload: Union[PerceptionPayload, dict]) -> Optional["AttentionTarget"]:
+        """从标准多模态载荷提取注意力目标"""
+        if isinstance(payload, dict):
+            # 兼容字典格式 (Legacy Support)
+            v_id = payload.get("vessel_id")
+            c_type = payload.get("source_type")
+            s_id = payload.get("source_id")
+        else:
+            # 标准 Pydantic 模型
+            v_id = payload.vessel_id
+            c_type = payload.source_type
+            s_id = payload.source_id
+
+        if v_id and c_type and s_id:
+            return cls(vessel_id=v_id, context_type=c_type, subject_id=s_id)
+        return None
+
+    def __str__(self):
+        return f"{self.vessel_id}:{self.context_type}:{self.subject_id}"
+
 
 class AttentionContext:
     """
@@ -85,24 +120,42 @@ class AttentionManager:
     中央注意力状态管理器 (Central Attention Registry)
     
     Hierarchy:
-      Manager -> Vessel (Module) -> Context (Branch) -> State (Item)
+      Manager -> Vessel (Module) -> Branch (Context) -> Item (State)
     
-    Usage:
-      # 获取 Napcat 的群聊分支
-      vessel = global_attention.get_vessel("napcat")
-      group_ctx = vessel.get_context("group")
-      group_ctx.focus("12345")
+    Usage (Standard):
+      target = AttentionTarget(vessel_id="napcat", context_type="group", subject_id="123")
+      global_attention.focus(target, ttl=60)
     """
     def __init__(self):
         self._vessels: Dict[str, VesselAttention] = {}
 
     def get_vessel(self, name: str) -> VesselAttention:
         """
-        获取 Vessel 模块的注意力控制器
+        获取 Vessel 模块的注意力控制器 (底层 API)
         """
         if name not in self._vessels:
             self._vessels[name] = VesselAttention(name)
         return self._vessels[name]
+
+    def focus(self, target: AttentionTarget, ttl: Optional[float] = None):
+        """
+        [标准接口] 激活指定目标的注意力
+        """
+        vessel = self.get_vessel(target.vessel_id)
+        # 默认 TTL 由 Branch 管理，这里传递 None 表示使用默认值，或者是具体数值
+        ctx = vessel.get_context(target.context_type)
+        ctx.focus(target.subject_id, duration=ttl)
+
+    def is_active(self, target: AttentionTarget) -> bool:
+        """
+        [标准接口] 检查目标是否处于活跃状态
+        """
+        if target.vessel_id not in self._vessels:
+            return False
+        vessel = self._vessels[target.vessel_id]
+        if target.context_type not in vessel._contexts:
+            return False
+        return vessel.get_context(target.context_type).is_active(target.subject_id)
         
     def cleanup_all(self):
         for vessel in self._vessels.values():

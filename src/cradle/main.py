@@ -13,19 +13,19 @@ async def main():
     os.system('cls' if os.name == 'nt' else 'clear')
 
     print("===============================================================")
-    print("   系统唤醒序列: CRADLE SELRENA (摇篮: 月见)                   ")
+    print("   CRADLE SELRENA - 系统启动序列                              ")
     print("===============================================================")
     print("")
 
-    # 1. 移交控制权给内核
-    print(">> [系统引导] 正在挂载神经内核...", end="", flush=True)
+    # 移交控制权给内核
+    print(">> 正在加载系统内核...", end="", flush=True)
 
-    # 此时才开始加载重型依赖 (Torch, Transformers等)，不会阻塞上方的 UI 显示
+    # 此时才开始加载重型依赖 (Torch, Transformers 等)，不会阻塞上方的 UI 显示
     # 这行 import 执行期间，控制台会显示上面的提示，直到加载完成
     from cradle.kernel import boot_sequence
 
     # 覆盖上一行提示，显示完成状态
-    print(f"\r>> [系统引导] 正在挂载神经内核... [完成]")
+    print(f"\r>> 系统内核已加载 [完成]")
 
     await boot_sequence()
 

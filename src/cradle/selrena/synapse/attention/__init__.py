@@ -1,3 +1,3 @@
-from .manager import AttentionManager, global_attention
+from .manager import AttentionManager, global_attention, AttentionTarget
 
-__all__ = ["global_attention", "AttentionManager"]
+__all__ = ["global_attention", "AttentionManager", "AttentionTarget"]

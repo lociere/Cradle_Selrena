@@ -142,7 +142,18 @@ class HybridBrainRouter(BaseBrainBackend):
         
         mode = self.strategy.routing_mode
         core_provider = self._core_provider_name
-        is_visual = MultimodalPreprocessor.has_vision_payload_batch(normalized_messages)
+
+        # [Routing Precision] 仅根据“当前轮次最后一条 user 消息”判断是否视觉输入，
+        # 避免历史消息里曾出现图片导致纯文本轮次误触发视觉专家。
+        last_user_message: Optional[ChatMessage] = None
+        for msg in reversed(normalized_messages):
+            if msg.role == "user":
+                last_user_message = msg
+                break
+        is_visual = bool(
+            last_user_message and
+            MultimodalPreprocessor.has_visual_content(last_user_message)
+        )
 
         logger.debug(
             f"[HybridBrain] Routing Decision: mode={mode}, has_visual={is_visual}, core={core_provider}")
@@ -203,6 +214,17 @@ class HybridBrainRouter(BaseBrainBackend):
                  logger.warning("[HybridBrain] Vision skipped (No capable model).")
                  return await core_backend.generate(MultimodalPreprocessor.sanitize_for_text_core(messages))
 
+        # 视觉专家存在但不支持多模态时，避免盲调导致底层 KeyError/协议错误
+        if not getattr(vision_backend, "is_multimodal", False):
+            logger.warning(
+                f"[HybridBrain] Vision expert '{vision_provider_name}' is not multimodal. "
+                "Skip vision transcription."
+            )
+            if getattr(core_backend, "is_multimodal", False):
+                logger.info("[HybridBrain] Fallback to core multimodal for vision handling.")
+                return await core_backend.generate(messages)
+            return await core_backend.generate(MultimodalPreprocessor.sanitize_for_text_core(messages))
+
         # 2. Vision Interpretation (Transcribe Image to Text)
         try:
             logger.debug(f"[HybridBrain] Invoking Vision Expert ({vision_provider_name}) for transcription...")
@@ -210,7 +232,10 @@ class HybridBrainRouter(BaseBrainBackend):
             if vision_summary:
                 logger.debug(f"=========== [Vision Expert Report] ===========\n{vision_summary}\n==============================================")
         except Exception as e:
-            logger.warning(f"[HybridBrain] Vision transcription failed: {e}")
+            logger.warning(
+                f"[HybridBrain] Vision transcription failed "
+                f"(provider={vision_provider_name}, error_type={type(e).__name__}): {e}"
+            )
             # Fallback: Core takes over if multimodal
             if getattr(core_backend, "is_multimodal", False):
                  return await core_backend.generate(messages)

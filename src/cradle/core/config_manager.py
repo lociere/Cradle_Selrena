@@ -104,6 +104,36 @@ class ConfigManager:
     def get_soul(self) -> SoulConfig:
         return self.soul_config
 
+    def get(self, key_path: str, default: Any = None) -> Any:
+        """
+        获取配置项值。支持点分路径访问 (e.g. 'napcat.token')
+        自动识别是属于 system 配置还是 soul 配置。
+        """
+        target_path = self._normalize_key_path(key_path)
+        
+        # 1. 确定配置根对象
+        if self._is_soul_key(target_path):
+            current = self.soul_config
+        else:
+            current = self.sys_config
+            
+        # 2. 逐层遍历
+        try:
+            parts = target_path.split('.')
+            for part in parts:
+                # 优先尝试属性访问 (Pydantic Model)
+                if hasattr(current, part):
+                    current = getattr(current, part)
+                # 其次尝试字典访问
+                elif isinstance(current, dict) and part in current:
+                    current = current[part]
+                # 找不到则返回默认值
+                else:
+                    return default
+            return current
+        except Exception:
+            return default
+
     def add_observer(self, callback: Callable[[], None]):
         """
         注册配置变更监听器。

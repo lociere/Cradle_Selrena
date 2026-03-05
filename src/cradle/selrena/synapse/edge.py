@@ -8,7 +8,6 @@ from cradle.schemas.domain.multimodal import (AudioContent, ContentBlock,
 from cradle.schemas.protocol.events.base import BaseEvent
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.utils.logger import logger
-from cradle.utils.string import clean_asr_transcript
 
 
 class Edge:
@@ -16,13 +15,13 @@ class Edge:
     边缘层 (Synapse Layer 2 - Edge Gateway)。
     
     作为系统的"感觉神经末梢"，负责：
-    1. 接收来自外围设备 (Vessel) 的原始感知信号 (Audio Transcription, Visual Snapshot)。
-    2. 执行初步过滤 (Modality Filtering) 和标准化 (Standardization)。
-    3. 将清洗后的信号转发给脊髓层 (Reflex)，不进行深层认知处理。
+    1. 接收来自 Vessel 的统一感知事件 `perception.message`。
+    2. 按配置进行模态过滤与内容降级，保证 Soul 看到的是可消费语义。
+    3. 将规范化后的载荷上行到 Reflex (`synapse.layer2.ingress`)。
     
     设计原则：
     - 无状态 (Stateless)：不维护对话上下文。
-    - 快速响应 (Low Latency)：仅做格式转换，避免阻塞。
+    - 快速响应 (Low Latency)：仅做协议规整，不做认知推理。
     """
 
     def __init__(self):
@@ -43,15 +42,13 @@ class Edge:
         """
         初始化边缘层网关。
         
-        注册对基础感知事件的监听器：
-        - `perception.audio.transcription`: 监听语音转录/文本输入。
-        - `perception.visual.snapshot`: 监听视觉快照输入。
+        注册通用感知事件监听器：
+        - `perception.message`: 内部/外部双载荷的统一入口。
         """
         global_lifecycle.register(self)
-        self.bus.subscribe("perception.audio.transcription",
-                           self.on_peripheral_transcription)
-        self.bus.subscribe("perception.visual.snapshot",
-                           self.on_peripheral_visual)
+        
+        # 通用多模态消息统一入口
+        self.bus.subscribe("perception.message", self.on_perception_message)
 
     async def cleanup(self):
         self.bus.unsubscribe_receiver(self)
@@ -106,6 +103,42 @@ class Edge:
             
         return processed
 
+    async def on_perception_message(self, event: BaseEvent):
+        """
+        处理统一感知事件 `perception.message`。
+        
+        输入可为 Internal/External 感知载荷（对象或字典）。
+        本层仅根据模态做轻量分流，并保持 payload 语义不被业务逻辑污染。
+        """
+        payload = event.payload
+        if not payload:
+            return
+            
+        # 从 payload 或 event 中提取 modality
+        modality = getattr(event, 'modality', None)
+        if not modality and isinstance(payload, dict):
+            modality = payload.get('modality', 'text')
+        elif not modality and hasattr(payload, 'modality'):
+            modality = payload.modality
+            
+        # 统一转换为字符串 (兼容 Modality 枚举)
+        if hasattr(modality, 'value'):
+            modality = modality.value
+            
+        modality_str = str(modality).lower()
+        
+        # 路由到对应的内部处理器
+        # [Design] 文本/音频/混合走通用语义上行；视觉走视觉上行
+        if modality_str in ('text', 'audio', 'multimodal'):
+            # 混合消息通常以文本语义为主，视觉块作为补充
+            await self.on_peripheral_transcription(event)
+        elif modality_str in ('visual', 'image', 'video'):
+            await self.on_peripheral_visual(event)
+        else:
+            # 未知模态，默认作为文本处理
+            logger.debug(f"[Edge] 未知模态 '{modality}'，作为文本处理")
+            await self.on_peripheral_transcription(event)
+
     def _extract_visual_text(self, payload: Any) -> str | None:
         if isinstance(payload, dict):
             for key in ("text", "ocr_text", "caption", "description", "title", "alt_text"):
@@ -121,12 +154,12 @@ class Edge:
         return None
 
     async def _publish_ingress(self, payload: Any, modality: str, event_timestamp: float | None):
-        """Standardized Layer 2 Ingress Publisher"""
+        """发布 Layer2 标准上行事件。"""
         
         if not isinstance(payload, dict):
              return
              
-        # [Strict] 仅接受标准 MultiModalPayload 字典
+        # [Strict] 仅接受标准 PerceptionPayload 字典
         raw_content = payload.get("content")
         if not raw_content:
             return
@@ -143,16 +176,32 @@ class Edge:
         # 构建一个简单的摘要用于日志，不放入 payload
         summary = f"[{modality}] Includes {len(content)} blocks"
 
+        # [Payload Reconstruction] 按协议分区构建字典
+        # 仅保留显式传入键，避免默认占位字段污染上游语义。
         ingress_payload = {
-            "content": content,
-            "timestamp": payload.get("timestamp", event_timestamp) if isinstance(payload, dict) else event_timestamp,
-            "source": source,
+            # --- 1. Core Content ---
             "modality": modality,
-            # Pass-through specific IDs
-            "user_id": payload.get("user_id"),
-            "group_id": payload.get("group_id"),
-            "raw": payload.get("raw")
+            "source": source,
+            "content": content,
         }
+
+        timestamp = payload.get("timestamp", event_timestamp)
+        if timestamp is not None:
+            ingress_payload["timestamp"] = timestamp
+
+        # --- 2. Attention Protocol ---
+        for key in ("vessel_id", "source_type", "source_id", "is_strong_wake", "is_external_source"):
+            if key in payload:
+                ingress_payload[key] = payload[key]
+
+        # --- 3. Context Metadata ---
+        for key in ("name", "metadata", "external_history"):
+            if key in payload:
+                ingress_payload[key] = payload[key]
+
+        # --- 4. Debug ---
+        if "raw" in payload:
+            ingress_payload["raw"] = payload["raw"]
 
         logger.debug(f"[Edge] >>> Layer2上行: {summary}")
         await self.bus.publish(BaseEvent(
@@ -163,18 +212,18 @@ class Edge:
 
     async def on_peripheral_transcription(self, event: Any):
         """
-        处理语音转录 (Transcription) 或文本输入事件。
+        处理文本/语音语义输入事件。
         
         Logic:
-            1. 校验负载格式 (必须为 `MultiModalPayload`)。
-            2. 检查系统是否允许文本模态 (Default Allowed)。
-            3. 将事件标准化为 `synapse.layer2.ingress` 上行事件。
+            1. 将载荷对象规整为紧凑 dict（仅显式字段）。
+            2. 校验 `content` 是否存在。
+            3. 发布标准化 `synapse.layer2.ingress`。
         """
         # [Strict Mode] 仅处理标准 payload 字典或对象
         # 严格要求通过 'content' 字段传递信息
         payload = event.payload
         if hasattr(payload, "model_dump"):
-            payload = payload.model_dump()
+            payload = payload.model_dump(exclude_unset=True, exclude_none=True)
             
         if not isinstance(payload, dict):
              return
@@ -196,19 +245,19 @@ class Edge:
 
     async def on_peripheral_visual(self, event: Any):
         """
-        处理视觉快照 (Visual Snapshot) 事件。
+        处理视觉语义输入事件。
         
         Logic:
-            1. 检查 'vision' 模态是否启用 (`config.perception.vision.enabled`)。
-            2. 若禁用则直接丢弃，避免无谓的资源消耗。
-            3. 校验并标准化为 `synapse.layer2.ingress` 上行事件。
+            1. 检查视觉模态是否启用。
+            2. 校验 `content` 是否存在。
+            3. 发布标准化 `synapse.layer2.ingress`。
         """
         if not self._modality_allowed("visual"):
             return
 
         payload = event.payload
         if hasattr(payload, "model_dump"):
-            payload = payload.model_dump()
+            payload = payload.model_dump(exclude_unset=True, exclude_none=True)
         
         # [Strict Mode] payload Must be dict and has content
         if not isinstance(payload, dict) or not payload.get("content"):

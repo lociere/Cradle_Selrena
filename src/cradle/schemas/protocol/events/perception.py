@@ -1,8 +1,8 @@
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional, TypeAlias
 from cradle.schemas.domain.multimodal import ContentBlock
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .base import BaseEvent
 
@@ -18,25 +18,46 @@ class Modality(str, Enum):
     TEXT = "text"         # 纯文本 (Text Input, Transcript)
     MULTIMODAL = "multimodal"  # 混合模态 (Mixed)
 
-class MultiModalPayload(BaseModel):
-    """
-    多模态标准载荷 (Standard Payload Schema)。
-    
-    系统内传递的所有感知数据的统一容器。
-    取代了旧版本中散乱的字典结构，确保所有数据都即包含内容(`content`)也包含元数据。
-    
-    Attributes:
-        content (List[ContentBlock]): 核心内容列表。可以是文本、图片、音频片段的组合。
-        raw (Any): 原始数据保留。用于调试或回溯（例如原始的 OneBot 消息对象）。
-        user_id (int | None): 来源用户标识。
-        group_id (int | None): 来源群组标识（如有）。
-    """
+class InternalMultiModalPayload(BaseModel):
+    """月见本体内部载荷：仅承载语义内容，不携带外部渠道上下文。"""
+
     content: List[ContentBlock] = Field(..., description="标准多模态内容列表")
-    raw: Any = Field(default=None, description="原始数据 (可选, 用于调试)")
-    user_id: int | None = Field(default=None, description="发送者 ID")
-    group_id: int | None = Field(default=None, description="群组 ID")
-    
+    is_external_source: Literal[False] = Field(default=False, description="内部来源固定为 False")
+    name: str | None = Field(default=None, description="发送者展示名称 (可选)")
+    metadata: dict = Field(default_factory=dict, description="内部模块扩展元数据")
+    raw: Any = Field(default=None, description="原始数据保留 (可选, 用于调试)")
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @model_validator(mode="after")
+    def _validate_internal_payload(self) -> "InternalMultiModalPayload":
+        return self
+
+
+class ExternalMultiModalPayload(BaseModel):
+    """外部高噪声来源载荷：显式携带路由与外部历史桥接信息。"""
+
+    content: List[ContentBlock] = Field(..., description="标准多模态内容列表")
+    vessel_id: str = Field(..., description="来源 Vessel 标识 (如 napcat)")
+    source_type: str = Field(..., description="来源分支类型 (如 group/private/task)")
+    source_id: str = Field(..., description="来源分支对象 ID")
+    is_strong_wake: bool = Field(default=False, description="是否强唤醒信号 (用于 Reflex 状态机)")
+    is_external_source: Literal[True] = Field(default=True, description="外部来源固定为 True")
+    name: str | None = Field(default=None, description="发送者展示名称 (如群名片/昵称)")
+    metadata: dict = Field(default_factory=dict, description="Vessel 专用业务元数据")
+    external_history: Any = Field(default=None, description="外部注入的会话历史上下文")
+    raw: Any = Field(default=None, description="原始数据保留 (可选, 用于调试)")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @model_validator(mode="after")
+    def _validate_external_payload(self) -> "ExternalMultiModalPayload":
+        if not self.vessel_id or not self.source_type or not self.source_id:
+            raise ValueError("ExternalMultiModalPayload 需要完整路由字段。")
+        return self
+
+
+PerceptionPayload: TypeAlias = ExternalMultiModalPayload | InternalMultiModalPayload
 
 
 class PerceptionEvent(BaseEvent):
@@ -44,16 +65,16 @@ class PerceptionEvent(BaseEvent):
     感知输入事件 (Input Event)。
 
     代表从传感器 (Sensor/Vessel) 接收到的原始或初步处理过的数据。
-    强制使用 `MultiModalPayload` 作为载荷，确保类型安全。
+    强制使用 `PerceptionPayload`（内部/外部双模型）作为载荷，确保类型安全。
     
     Attributes:
         modality (Modality): 数据的感知模态类型。
-        payload (MultiModalPayload): 标准化的多模态数据载荷。
+        payload (PerceptionPayload): 标准化的多模态数据载荷。
         duration (float): 持续时长 (秒)。主要用于音频片段或视频片段的时间跨度。
         metadata (dict): 额外的技术元数据 (如采样率、分辨率、置信度等)。
     """
     modality: Modality = Field(..., description="数据的感知模态")
-    payload: MultiModalPayload = Field(..., description="标准多模态载荷")
+    payload: PerceptionPayload = Field(..., description="标准多模态载荷")
     duration: float = Field(0.0, description="持续时长 (秒), 主要用于音频片段或视频片段")
     metadata: dict = Field(default_factory=dict,
                            description="额外的元数据 (如采样率、分辨率、置信度等)")

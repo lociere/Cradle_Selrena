@@ -135,6 +135,7 @@ class NapcatConfig(BaseModel):
     listen_port: int = Field(
         default=6101, ge=1, le=65535, description="本地监听端口")
     token: str = Field(default="", description="可选的连接验证令牌，发送时附加在子协议中")
+    silent_record_window: int = Field(default=50, description="静默记录窗口大小")
 
 
 class SystemSettings(BaseModel):

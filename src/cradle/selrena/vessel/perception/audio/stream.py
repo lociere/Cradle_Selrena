@@ -15,7 +15,10 @@ import webrtcvad
 
 from cradle.core.config_manager import global_config
 from cradle.core.lifecycle import global_lifecycle
-from cradle.schemas.protocol.events.base import BaseEvent
+from cradle.schemas.domain.multimodal import TextContent
+from cradle.schemas.protocol.events.perception import (InternalMultiModalPayload,
+                                                       Modality,
+                                                       PerceptionEvent)
 from cradle.selrena.synapse.event_bus import global_event_bus
 from cradle.selrena.vessel.perception.audio.asr_client import FunASRClient
 from cradle.utils.logger import logger
@@ -189,9 +192,15 @@ class AudioStream:
             # Layer2(Edge) 处理外围规整，Reflex 完成门控与意识流编排
             self.logger.debug(f"👂 Transcribed: {text_clean}")
 
-            await global_event_bus.publish(BaseEvent(
-                name="perception.audio.transcription",
-                payload={"text": text, "clean_text": text_clean},
+            payload_obj = InternalMultiModalPayload(
+                content=[TextContent(text=text)],
+                metadata={"clean_text": text_clean},
+                name="microphone",
+            )
+            await global_event_bus.publish(PerceptionEvent(
+                name="perception.message",
+                modality=Modality.TEXT,
+                payload=payload_obj,
                 source="Ear"
             ))
         except Exception as e:

@@ -8,7 +8,7 @@ class TextContent(BaseModel):
     纯文本内容块 (Text Schema)。
     
     用于表示消息中的文字部分。这是最基础的多模态单元。
-    在构建 `MultiModalPayload` 时，通常作为 content 列表的一项。
+    在构建 `PerceptionPayload`（内部/外部）时，通常作为 content 列表的一项。
     
     Attributes:
         type (Literal["text"]): 内容类型标识，固定为 "text"。

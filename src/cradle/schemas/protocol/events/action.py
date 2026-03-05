@@ -9,6 +9,7 @@ from .base import BaseEvent
 class ActionType(str, Enum):
     """行动类型枚举"""
     SPEAK = "speak"           # 语音表达 (TTS)
+    CHANNEL_REPLY = "channel_reply"  # 外部渠道回写 (如 QQ/Discord 等)
     EXPRESSION = "expression"  # 表情/身态管理 (Live2D/Avatar)
     UI_UPDATE = "ui_update"   # 界面交互 (Toast, 弹窗等)
     TOOL_USE = "tool_use"     # 工具调用 (API, 脚本, 外部软件)
@@ -49,14 +50,6 @@ class SpeakAction(ActionEvent):
     action_type: ActionType = ActionType.SPEAK
     text: str = Field(..., description="需要朗读的文本内容")
     emotion: str = Field("neutral", description="朗读时的情感倾向")
-    target_user_id: Optional[int] = Field(
-        default=None,
-        description="可选：指定私聊目标用户ID（用于消息桥接精准回发）",
-    )
-    target_group_id: Optional[int] = Field(
-        default=None,
-        description="可选：指定群聊目标群ID（用于消息桥接精准回发）",
-    )
 
     @field_validator("text", mode="before")
     @classmethod
@@ -71,16 +64,36 @@ class SpeakAction(ActionEvent):
         normalized = str(value or "neutral").strip().lower()
         return normalized or "neutral"
 
-    @field_validator("target_user_id", "target_group_id", mode="before")
+class ChannelReplyAction(ActionEvent):
+    """外部渠道回写动作（用于 Vessel 定向回发，不用于本地 TTS）。"""
+    name: str = "action.channel.reply"
+    action_type: ActionType = ActionType.CHANNEL_REPLY
+    text: str = Field(..., description="需要回写到外部渠道的文本")
+    emotion: str = Field("neutral", description="可选：渠道回写时携带的情绪标签")
+    vessel_id: Optional[str] = Field(default=None, description="目标 Vessel 标识（如 napcat）")
+    source_type: Optional[str] = Field(default=None, description="目标上下文类型（如 group/private/task）")
+    source_id: Optional[str] = Field(default=None, description="目标上下文对象 ID（字符串化标识）")
+
+    @field_validator("text", mode="before")
     @classmethod
-    def _normalize_target_id(cls, value: Any) -> Optional[int]:
+    def _normalize_text(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def _normalize_emotion(cls, value: Any) -> str:
+        normalized = str(value or "neutral").strip().lower()
+        return normalized or "neutral"
+
+    @field_validator("vessel_id", "source_type", "source_id", mode="before")
+    @classmethod
+    def _normalize_route_text(cls, value: Any) -> Optional[str]:
         if value is None:
             return None
-        try:
-            target = int(value)
-        except Exception:
-            return None
-        return target if target > 0 else None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class UIActionEvent(ActionEvent):

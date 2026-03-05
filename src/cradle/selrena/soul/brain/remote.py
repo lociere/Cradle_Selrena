@@ -58,7 +58,13 @@ class OpenAIRemoteBackend(BaseBrainBackend):
                 max_tokens=self.config.max_tokens,
             )
 
-            content = response.choices[0].message.content
+            choices = getattr(response, "choices", None) or []
+            if not choices:
+                logger.warning(f"[BrainKernel] {self.config.model} returned no choices.")
+                return ""
+
+            first_message = getattr(choices[0], "message", None)
+            content = getattr(first_message, "content", None)
             if not content:
                 logger.warning(
                     f"[BrainKernel] {self.config.model} returned empty.")
