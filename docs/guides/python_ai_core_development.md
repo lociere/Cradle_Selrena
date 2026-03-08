@@ -2,6 +2,20 @@
 
 本部分覆盖位于 `src/selrena` 包中的所有层级，从基础设施到推理引擎，应遵循项目的 DDD 分层结构。包名为 `selrena`，无需兼容任何旧名称。
 
+### 目录结构概览
+```
+selrena/
+├── core/
+├── application/
+├── ports/
+├── adapters/
+├── domain/
+├── schemas/
+├── utils/
+└── inference/
+```
+
+
 ## 1. 核心基础设施层（core）
 说明此层代码负责支撑整个平台的运行环境，所有模块均通过生命周期管理注册。
 
