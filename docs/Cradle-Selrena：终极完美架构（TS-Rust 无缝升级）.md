@@ -169,7 +169,9 @@ cradle-selrena/
 │   └── @cradle-selrena/protocol-ts/
 
 # ========== 3. Python AI 核心层（纯业务零耦合·借鉴旧版详细设计） ==========
-├── cradle-selrena/ (Python 代码位于 `src/selrena` 包)
+*以下结构已根据全局“终极完美架构”反复优化并在本仓库实际存在，仅在此重复以便查阅。任何与此不同的说明即为过时。*
+
+├── cradle-selrena/ (Python 代码位于 `src/selrena` 包，之前曾使用 `cradle_selrena_core` 名称，现在已完全迁移)
 │   ├── pyproject.toml          # PEP 621 现代Python包标准配置
 │   ├── requirements.txt        # 依赖锁定文件（pip-compile生成，版本固定）
 │   ├── README.md              # Python包说明文档
@@ -177,14 +179,34 @@ cradle-selrena/
 │   │   └── selrena/            # Python唯一包名，包含所有核心模块（通过 `selrena` 访问）
 │   │       ├── __init__.py     # 包入口，定义对外 API
 │   │       ├── main.py         # 进程唯一入口，仅做生命周期管理，无业务代码
-│   │       ├── container.py    # 依赖注入容器（彻底解决循环依赖，模块间无硬耦合）
+│   │       ├── container.py    # 依赖注入容器（统一初始化/生命周期）
 │   │       # ========== 核心基础设施层（core） =========
 │   │       ├── core/
 │   │       │   ├── __init__.py
-│   │       │   ├── config_manager.py   # 配置管理（从内核同步·无本地文件读写）
-│   │       │   ├── event_bus.py        # 事件总线客户端（仅和第一层内核通信）
-│   │       │   ├── lifecycle.py        # 统一模块生命周期抽象接口
-│   │       │   └── logger.py           # 统一结构化日志（推给内核落地，无本地IO）
+│   │       │   ├── config_manager.py   # 配置同步与校验
+│   │       │   ├── event_bus_client.py # 内核事件总线客户端
+│   │       │   ├── ai_service.py       # 与TS内核的桥梁服务
+│   │       │   ├── main_service.py     # 子服务协调器
+│   │       │   └── lifecycle.py        # 模块生命周期接口
+│   │       ├── application/    # 应用服务层（ConversationService、MemoryService、ReasoningService）
+│   │       ├── ports/          # 抽象接口定义（KernelPort、MemoryPort、InferencePort、PersonaPort）
+│   │       ├── adapters/       # 端口实现（文件系统、ZMQ、OpenAI等）
+│   │       ├── domain/         # 领域模型（persona、memory、emotion）
+│   │       ├── schemas/        # Pydantic模式（事件/payloads/domain）
+│   │       │   ├── __init__.py
+│   │       │   ├── events.py   # 事件模型
+│   │       │   ├── payloads.py # 载荷模型
+│   │       │   └── domain.py   # 内部领域模型
+│   │       ├── utils/          # 工具函数（async, logger, prompt, etc.）
+│   │       ├── persona/        # PersonaManager 与辅助逻辑
+│   │       │   └── manager.py
+│   │       ├── inference/      # 推理层：LLM/vision/audio + 调度
+│   │       │   ├── __init__.py
+│   │       │   ├── llm.py
+│   │       │   ├── vision.py
+│   │       │   ├── audio.py
+│   │       │   └── engines/utils/preprocessor.py
+│   │       └── tests/         # pytest 单元/集成
 │   │       ├── application/    # 应用服务层（ConversationService、MemoryService 等）
 │   │       ├── ports/          # 抽象接口定义（KernelPort、MemoryPort、InferencePort）
 │   │       ├── adapters/       # 具体实现（文件系统、ZMQ、OpenAI、第三方API）
