@@ -22,9 +22,11 @@ class AIContainer:
     4. ??????
     """
     
-    def __init__(self, config_dir: Path, data_dir: Path):
-        self.config_dir = config_dir
-        self.data_dir = data_dir
+    def __init__(self, config_dir: Path | str, data_dir: Path | str):
+        # normalize to Path
+        from pathlib import Path
+        self.config_dir = Path(config_dir)
+        self.data_dir = Path(data_dir)
         
         # ???????????
         self.llm: Optional[LLMBackend] = None

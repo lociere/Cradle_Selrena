@@ -1,8 +1,9 @@
 """Schemas layer exports after migration."""
 
-from .events import BaseEvent, SpeakAction, AudioPlayEvent, ScreenCaptureEvent, SystemEvent
+from .protocol.events.base import BaseEvent
+from .protocol.events.action import SpeakAction, ChannelReplyAction, ActionEvent
 from .payloads import __all__ as _payload_exports
 
 __all__: list[str] = [
-    "BaseEvent", "SpeakAction", "AudioPlayEvent", "ScreenCaptureEvent", "SystemEvent",
+    "BaseEvent", "SpeakAction", "ChannelReplyAction", "ActionEvent",
 ] + _payload_exports

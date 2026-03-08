@@ -4,6 +4,7 @@ from typing import Optional
 
 from selrena.inference.engines.utils.preprocessor import MultimodalPreprocessor
 from selrena.domain.emotion import EmotionCategory, EmotionState
+from selrena.schemas.chat import Message, ChatHistory
 from selrena.domain.memory import Memory, MemoryType
 from selrena.domain.persona import Persona
 from selrena.inference.llm import LLMBackend
@@ -69,8 +70,12 @@ class ConversationService:
             relevant_memories = await self.memory.retrieve_memories(user_input, n_results=3)
         logger.debug(f"检索到 {len(relevant_memories)} 条相关记忆")
         
-        # 2. 构建对话上下文
-        context = self._build_context(user_input, relevant_memories)
+        # 2. 构建对话上下文，使用 Message/ChatHistory 格式
+        history = ChatHistory()
+        for mem in relevant_memories:
+            history.messages.append(Message(role="system", content=mem.content))
+        history.add_message("user", user_input)
+        context = self._build_context(history, relevant_memories)
         
         # 3. 调用 LLM 生成回复
         response = await self.llm.generate(context)
@@ -103,24 +108,26 @@ class ConversationService:
         )
         return result
     
-    def _build_context(self, user_input: str, memories: list[Memory]) -> str:
-        """构建 LLM 上下文"""
+    def _build_context(self, history: ChatHistory, memories: list[Memory]) -> str:
+        """构建 LLM 上下文，使用 ChatHistory 对象"""
         # 预处理历史消息、记忆文本，去除非文本块以便兼容纯文本模型
-        clean_input = MultimodalPreprocessor.sanitize_for_text_core([user_input])[0]
+        msgs = [m.content for m in history.messages]
+        clean_msgs = MultimodalPreprocessor.sanitize_for_text_core(msgs)
+
         context_parts = [
             self.persona.to_prompt(),
-            "\n# 相关记忆\n",
+            "\n# 对话历史\n",
         ]
-        
+        for idx, m in enumerate(clean_msgs):
+            role = history.messages[idx].role if idx < len(history.messages) else "user"
+            context_parts.append(f"{role}：{m}")
+
+        context_parts.append("\n# 相关记忆\n")
         for mem in memories:
             context_parts.append(f"- {mem.content}")
-        
-        context_parts.extend([
-            "\n# 当前对话\n",
-            f"用户：{user_input}\n",
-            f"{self.persona.name}：",
-        ])
-        
+
+        # 保留结尾的角色提示
+        context_parts.append(f"{self.persona.name}：")
         return "\n".join(context_parts)
     
     def _detect_emotion(self, text: str) -> EmotionCategory:

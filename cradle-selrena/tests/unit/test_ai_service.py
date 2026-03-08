@@ -55,3 +55,36 @@ def test_ai_service_external_message(tmp_path):
         # ensure internal event fired
         assert events, "内部事件未发布"
     asyncio.run(run())
+
+
+def test_chat_history_construction():
+    from selrena.schemas.chat import ChatHistory, Message
+    hist = ChatHistory()
+    hist.add_message("user", "hello")
+    hist.messages.append(Message(role="assistant", content="hi"))
+    assert len(hist.messages) == 2
+    assert hist.messages[0].role == "user"
+    assert isinstance(hist.messages[1].content, str)
+
+
+def test_content_block_and_message_validation():
+    from selrena.schemas.multimodal import TextContent, ImageContent, ContentBlock
+    from selrena.schemas.chat import Message
+    t = TextContent(text="foo")
+    i = ImageContent(image_url={"url": "http://img"})
+    assert isinstance(t, ContentBlock)
+    assert isinstance(i, ContentBlock)
+    m = Message(role="user", content=[t, i])
+    assert m.content[0].type == "text"
+
+
+def test_kernel_adapter_speak_event(monkeypatch):
+    from selrena.adapters import KernelAdapter
+    events = []
+    class DummyBus:
+        async def publish(self, action):
+            events.append(action)
+    adapter = KernelAdapter(event_bus=DummyBus())
+    import asyncio
+    asyncio.run(adapter.send_message("hello", emotion="joy"))
+    assert events and events[0].action_type == "speak"

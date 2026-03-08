@@ -21,7 +21,7 @@ class KernelAdapter(KernelPort):
         logger.info("KernelAdapter ????? (TS ??)")
 
     async def send_message(self, text: str, emotion: Optional[str] = None) -> None:
-        from selrena.schemas.events import SpeakAction
+        from selrena.schemas.events import SpeakAction, ChannelReplyAction
         action = SpeakAction(
             source="AI",
             text=text,
