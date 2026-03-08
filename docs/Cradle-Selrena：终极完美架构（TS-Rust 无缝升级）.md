@@ -4,6 +4,25 @@
 
 ---
 
+## 目录
+
+1. [全维度合规性校验清单](#一全维度合规性校验清单借鉴旧版精华12项全通过)
+2. [顶层设计铁律](#二顶层设计铁律终身遵守借鉴旧版核心原则)
+3. [最终完整目录结构](#三最终完整目录结构✅当前在用--未来预留)
+4. [分层职责绝对锁死](#分层职责绝对锁死永不越界)
+5. [跨语言通信规范](#四跨语言通信规范零错位零报错)
+6. [Rust内核升级路径](#五rust内核升级路径零重构一行业务代码不改)
+7. [极简工程化命令](#六极简工程化命令一键操作零繁琐)
+8. [终极完美性承诺](#七终极完美性承诺100覆盖你的所有需求)
+9. [附录：Python AI 核心架构说明](#附录python-ai核心架构说明ddd-分层架构)
+
+> 开发细节请参阅位于 `docs/guides/` 的三份专用文档：
+> - Python AI 核心层开发指南
+> - 系统内核层开发指南（TS）
+> - 渲染交互层开发指南（TS+React）
+
+---
+
 ## 一、全维度合规性校验清单（借鉴旧版精华，12项全通过）
 
 |校验维度|校验标准|借鉴旧版精华|校验结果|
@@ -38,7 +57,7 @@
 
 **改进建议**：
 1. 将旧架构的 `SensorySystem`、`MemoryVessel`、`HybridBrainRouter` 封装成独立模块放入 `inference` 或 `application` 层。这样既保留灵活性，又不破坏分层。
-2. 在 Python层引入内部事件总线（`soul/event_bus.py`），为模块间广播提供统一契约。各服务（记忆、感知、思考）订阅相应事件，保持解耦。
+2. 在 Python层引入内部事件总线（`core/event_bus.py` 或 `core/event_bus_client.py`），为模块间广播提供统一契约。各服务（记忆、感知、思考）订阅相应事件，保持解耦。
 3. 记忆端口扩展向量查询、短时窗口、外部会话标志；MemoryService 包含 `memorize_episode`/`recall_episode` API，内部使用 `MemoryVessel` 实现。
 4. Brain路由器在 `inference/engine_pool` 目录实现，称为 `BrainRouter`，支持配置策略、容灾、视觉转述，为 ConversationService 调用。
 5. 在 TS/内核层和 Rust future模块，保持仅负责协议实现与插件宿主，语义处理完全交给 Python。
@@ -72,7 +91,7 @@
 
 ---
 
-## 二、最终完整目录结构（✅当前在用 | 📌未来预留）
+## 三、最终完整目录结构（✅当前在用 | 📌未来预留）
 
 ```Plain Text
 
@@ -149,7 +168,7 @@ cradle-selrena/
 │   # ✅ TS协议包（自动生成产物）
 │   └── @cradle-selrena/protocol-ts/
 
-# ========== 3. Python AI核心（数字生命灵魂·纯业务零耦合·借鉴旧版详细设计） ==========
+# ========== 3. Python AI 核心层（纯业务零耦合·借鉴旧版详细设计） ==========
 ├── cradle-selrena-core/
 │   ├── pyproject.toml          # PEP 621 现代Python包标准配置（替代过时setup.py）
 │   ├── requirements.txt        # 依赖锁定文件（pip-compile生成，版本固定）
@@ -229,10 +248,17 @@ cradle-selrena/
 - **架构相关**
   - [`architecture/python_optimization.md`](architecture/python_optimization.md)：Python 核心架构优化总结
   - [`architecture/refactor_summary.md`](architecture/refactor_summary.md)：架构重构总结
+  - [`architecture/python_ai_perfect_architecture.md`](architecture/python_ai_perfect_architecture.md)：Python AI 终极架构说明
+  - [`architecture/python_structure_optimization_old.md`](architecture/python_structure_optimization_old.md)：旧版结构对比分析
+  - [`architecture/schemas_optimization.md`](architecture/schemas_optimization.md)：Schemas 架构优化总结
 - **配置相关**
   - [`config/migration_complete.md`](config/migration_complete.md)：配置迁移完成报告
   - [`config/refactor_complete.md`](config/refactor_complete.md)：配置重构完成报告
   - [`config/refactor_summary.md`](config/refactor_summary.md)：配置重构总结
+  - [`config/migration_guide.md`](config/migration_guide.md)：配置迁移指南
+  - [`config/structure_optimization.md`](config/structure_optimization.md)：配置结构优化总结
+- **开发指南**
+  - [`guides/layer_development_guidelines.md`](guides/layer_development_guidelines.md)：各层开发指导模板
 
 这些文档原先散落于根目录或临时位置，现已归档分类，后续内容请直接更新对应文件。
 
@@ -282,7 +308,7 @@ cradle-selrena/
 
 ---
 
-## 三、分层职责绝对锁死（永不越界）
+## 四、分层职责绝对锁死（永不越界）
 
 |层级|语言|唯一职责|绝对禁止|
 |---|---|---|---|
@@ -424,7 +450,7 @@ pnpm run clean
 
 ---
 
-## 三、Python AI 核心架构说明（DDD 分层架构）
+## 附录：Python AI 核心架构说明（DDD 分层架构）
 
 > **注意**：实际 Python AI 核心采用了更完善的 DDD（领域驱动设计）分层架构，详见 [`cradle-selrena-core/docs/python_structure_optimization.md`](cradle-selrena-core/docs/python_structure_optimization.md)
 
