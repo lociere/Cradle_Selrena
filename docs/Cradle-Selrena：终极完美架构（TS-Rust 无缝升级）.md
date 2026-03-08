@@ -169,22 +169,26 @@ cradle-selrena/
 │   └── @cradle-selrena/protocol-ts/
 
 # ========== 3. Python AI 核心层（纯业务零耦合·借鉴旧版详细设计） ==========
-├── cradle-selrena-core/
-│   ├── pyproject.toml          # PEP 621 现代Python包标准配置（替代过时setup.py）
+├── cradle-selrena/ (Python 代码位于 `src/selrena` 包，旧名 `cradle_selrena_core` 已逐步迁移)
+│   ├── pyproject.toml          # PEP 621 现代Python包标准配置
 │   ├── requirements.txt        # 依赖锁定文件（pip-compile生成，版本固定）
 │   ├── README.md              # Python包说明文档
 │   ├── src/                    # 严格 PEP 标准 src-layout 结构（彻底解决导入问题）
-│   │   └── cradle_selrena_core/ # Python唯一包名（下划线符合PEP规范，无命名冲突）
-│   │       ├── __init__.py     # 包入口，严格控制导出，无业务逻辑
+│   │   └── selrena/            # Python唯一包名，包含所有核心模块（通过 `selrena` 访问）
+│   │       ├── __init__.py     # 包入口，重导出老模块（迁移期间兼容）
 │   │       ├── main.py         # 进程唯一入口，仅做生命周期管理，无业务代码
 │   │       ├── container.py    # 依赖注入容器（彻底解决循环依赖，模块间无硬耦合）
-│   │       # ========== 框架核心基础设施（纯内部工具·无外界IO）借鉴旧版 ==========
+│   │       # ========== 框架核心基础设施（纯内部工具·无外界IO） ==========
 │   │       ├── core/
 │   │       │   ├── __init__.py
 │   │       │   ├── config_manager.py   # 配置管理（从内核同步·无本地文件读写）
 │   │       │   ├── event_bus.py        # 事件总线客户端（仅和第一层内核通信）
 │   │       │   ├── lifecycle.py        # 统一模块生命周期抽象接口
 │   │       │   └── logger.py           # 统一结构化日志（推给内核落地，无本地IO）
+│   │       ├── application/    # 应用服务层（ConversationService、MemoryService 等）
+│   │       ├── ports/          # 抽象接口定义（KernelPort、MemoryPort、InferencePort）
+│   │       ├── adapters/       # 具体实现（文件系统、ZMQ、OpenAI、第三方API）
+│   │       ├── domain/         # 领域模型（persona、memory、emotion）
 │   │       ├── schemas/        # 全局数据模型（Pydantic V2·从protocol包自动生成）
 │   │       │   ├── __init__.py
 │   │       │   ├── events.py   # 事件模型（和protocol包100%对齐）
