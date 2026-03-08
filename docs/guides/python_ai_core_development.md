@@ -1,6 +1,6 @@
 # Python AI 核心层开发指南
 
-本部分覆盖 Python 包中的所有层级，从基础设施到推理引擎，应遵循项目的 DDD 分层结构。
+本部分覆盖位于 `src/selrena` 包中的所有层级，从基础设施到推理引擎，应遵循项目的 DDD 分层结构。包名为 `selrena`，无需兼容任何旧名称。
 
 ## 1. 核心基础设施层（core）
 说明此层代码负责支撑整个平台的运行环境，所有模块均通过生命周期管理注册。
@@ -19,7 +19,7 @@
 
 ```python
 # config_manager example
-from cradle_selrena_core.core.config_manager import global_config
+from selrena.core.config_manager import global_config
 
 class SomeService(Lifecycle):
     async def on_start(self):
@@ -30,7 +30,7 @@ class SomeService(Lifecycle):
 
 ```python
 # event_bus_client example
-from cradle_selrena_core.core.event_bus_client import EventBusClient
+from selrena.core.event_bus_client import EventBusClient
 
 bus = EventBusClient()
 await bus.connect()
@@ -47,7 +47,7 @@ await bus.subscribe("user.input", self.handle_input)
 * `MemoryPort` – 抽象存储，当前实现为文件系统，未来可扩展为数据库或向量库。
 
 ```python
-from cradle_selrena_core.ports import KernelPort
+from selrena.ports import KernelPort
 
 class DummyKernelAdapter(KernelPort):
     async def send_message(self, text: str, emotion: str = None):
@@ -92,7 +92,7 @@ class Persona:
 领域模型的单元测试仅需构造实例并验证属性，可在 `tests/unit` 添加简单用例：
 ```python
 def test_persona_layers():
-    from cradle_selrena_core.domain.persona import Persona
+    from selrena.domain.persona import Persona
     p = Persona(name="A", identity="I", values=["v"])
     assert p.name == "A"
 ```
