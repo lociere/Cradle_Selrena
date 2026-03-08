@@ -7,7 +7,7 @@ from selrena.domain.emotion import EmotionCategory, EmotionState
 from selrena.schemas.chat import Message, ChatHistory
 from selrena.domain.memory import Memory, MemoryType
 from selrena.domain.persona import Persona
-from selrena.soul.persona import PersonaManager
+from selrena.persona.manager import PersonaManager
 from selrena.inference.llm import LLMBackend
 from selrena.ports import KernelPort, MemoryPort
 from selrena.utils.logger import logger
