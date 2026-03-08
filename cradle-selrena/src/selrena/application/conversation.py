@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from selrena.inference.engines.utils.preprocessor import MultimodalPreprocessor
 from selrena.domain.emotion import EmotionCategory, EmotionState
 from selrena.domain.memory import Memory, MemoryType
 from selrena.domain.persona import Persona
@@ -49,20 +50,23 @@ class ConversationService:
         self.emotion = EmotionState()
         logger.info("ConversationService 初始化完成")
     
-    async def process_message(self, user_input: str) -> str:
+    async def process_message(self, user_input: str, is_external: bool = False) -> str:
         """
         处理用户消息的完整流程
         
         Args:
             user_input: 用户输入文本
+            is_external: 来自外部源时不使用持久短时记忆
             
         Returns:
             AI 回复文本
         """
-        logger.info(f"收到用户消息：{user_input[:50]}...")
+        logger.info(f"收到用户消息：{user_input[:50]}... 外部: {is_external}")
         
-        # 1. 检索相关记忆
-        relevant_memories = await self.memory.retrieve_memories(user_input, n_results=3)
+        # 1. 检索相关记忆（外部请求不检索，避免泄露主用户历史）
+        relevant_memories = []
+        if not is_external:
+            relevant_memories = await self.memory.retrieve_memories(user_input, n_results=3)
         logger.debug(f"检索到 {len(relevant_memories)} 条相关记忆")
         
         # 2. 构建对话上下文
@@ -86,10 +90,10 @@ class ConversationService:
         logger.info(f"回复生成：{response[:50]}...")
         return response
 
-    async def process_conversation(self, user_id: str, message: str, conversation_id: str | None = None) -> ConversationResult:
+    async def process_conversation(self, user_id: str, message: str, conversation_id: str | None = None, is_external: bool = False) -> ConversationResult:
         """兼容 AIService 的调用，返回详细结果"""
         # 目前直接复用 process_message，扩展返回字段
-        response = await self.process_message(message)
+        response = await self.process_message(message, is_external=is_external)
         result = ConversationResult(
             response=response,
             emotion_state=self.emotion,
@@ -101,6 +105,8 @@ class ConversationService:
     
     def _build_context(self, user_input: str, memories: list[Memory]) -> str:
         """构建 LLM 上下文"""
+        # 预处理历史消息、记忆文本，去除非文本块以便兼容纯文本模型
+        clean_input = MultimodalPreprocessor.sanitize_for_text_core([user_input])[0]
         context_parts = [
             self.persona.to_prompt(),
             "\n# 相关记忆\n",

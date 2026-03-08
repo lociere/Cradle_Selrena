@@ -14,6 +14,9 @@ from selrena.container import AIContainer
 from selrena.domain.persona import Persona
 from selrena.domain.memory import Memory, MemoryType
 from selrena.domain.emotion import EmotionState
+from .sensory import SensorySystem
+from selrena.inference.engines.utils.preprocessor import MultimodalPreprocessor
+from selrena.utils.event_bus import publish as publish_internal
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +44,9 @@ class AIService:
         self,
         event_bus_host: str = "localhost",
         event_bus_port: int = 3000,
-        transport: EventBusTransport = EventBusTransport.HTTP
+        transport: EventBusTransport = EventBusTransport.HTTP,
+        config_dir: str | None = None,
+        data_dir: str | None = None,
     ):
         """
         初始化AI服务
@@ -57,8 +62,17 @@ class AIService:
             port=event_bus_port
         )
         
-        # 初始化AI容器
-        self.ai_container = AIContainer()
+        # 初始化AI容器，允许通过参数传入目录
+        if config_dir is not None and data_dir is not None:
+            self.ai_container = AIContainer(config_dir=config_dir, data_dir=data_dir)
+        else:
+            # 如果调用者未指定目录，则使用默认临时路径，方便快速测试
+            from pathlib import Path
+            cfg = Path("./config_simple")
+            data = Path("./data_simple")
+            cfg.mkdir(exist_ok=True)
+            data.mkdir(exist_ok=True)
+            self.ai_container = AIContainer(config_dir=cfg, data_dir=data)
         
         # 注册事件处理器
         self._register_event_handlers()
@@ -125,27 +139,47 @@ class AIService:
         logger.info("AI服务已停止")
     
     async def _handle_user_input(self, event: Dict[str, Any]):
-        """
-        处理用户输入事件
-        
-        Args:
-            event: 用户输入事件
+        """处理用户输入事件。
+
+        旧架构的 SoulIntellect 会收到各种形式的载荷（外部/内部、视觉/文本等），
+        并通过 `MultimodalPreprocessor` 标准化。为了保持契约一致，我们在这里
+       复用同样的思路：
+
+        1. 从 payload 提取 content/text 等字段。
+        2. 判断是否来自外部源并据此决定是否使用短时记忆。
+        3. 预处理去除 CQ 码、占位符等。
+        4. 将结果交给 ConversationService。
         """
         try:
-            payload = event.get("payload", {})
-            user_id = payload.get("user_id", "default_user")
-            message = payload.get("message", "")
-            conversation_id = payload.get("conversation_id")
-            
-            logger.info(f"收到用户输入: {user_id} - {message[:50]}...")
-            
-            # 设置当前会话ID
+            raw = event.get("payload", {}) or {}
+
+            # 兼容老接口：有 message 字段时直接使用；否则将整个载荷交给预处理
+            if "message" in raw and raw.get("message"):
+                user_id = raw.get("user_id", "default_user")
+                conversation_id = raw.get("conversation_id")
+                text = raw.get("message", "")
+                is_external = raw.get("is_external_source", False)
+                content = text
+            else:
+                # 使用预处理器解析多模态载荷
+                text, has_visual, is_valid = MultimodalPreprocessor.validate_ingress_payload(raw)
+                user_id = raw.get("user_id", "default_user")
+                conversation_id = raw.get("conversation_id")
+                is_external = bool(raw.get("is_external_source", False))
+                content = raw.get("content", text)
+
+            if not is_valid and not content:
+                logger.debug("忽略无效或空消息")
+                return
+
+            logger.info(f"收到用户输入: {user_id} - {text[:50]}...")
+
             if conversation_id:
                 self.current_conversation_id = conversation_id
-            
-            # 调用AI核心处理用户输入
-            response = await self._process_user_input(user_id, message)
-            
+
+            # 调用AI核心处理用户输入，将 is_external 传递下去
+            response = await self._process_user_input(user_id, content, is_external)
+
             # 发送AI响应事件
             await self.event_bus.send_event("ai_response", {
                 "conversation_id": conversation_id,
@@ -157,13 +191,13 @@ class AIService:
                 ] if response.memory_updates else [],
                 "metadata": response.metadata
             })
-            
+            # 同时发布内部事件，供其他Python模块监听
+            publish_internal("ai.response", response)
+
             logger.info(f"已发送AI响应: {response.text[:50]}...")
-            
+
         except Exception as e:
             logger.error(f"处理用户输入失败: {e}")
-            
-            # 发送错误响应
             await self.event_bus.send_event("ai_error", {
                 "conversation_id": self.current_conversation_id,
                 "error": str(e),
@@ -189,26 +223,33 @@ class AIService:
     async def _handle_memory_store(self, event: Dict[str, Any]):
         logger.info("收到 memory_store 事件")
 
-    async def _process_user_input(self, user_id: str, message: str) -> AIResponse:
+    async def _process_user_input(self, user_id: str, message: str, is_external: bool = False) -> AIResponse:
         """
-        处理用户输入，生成AI响应
-        
+        处理用户输入，生成AI响应。
+
         Args:
             user_id: 用户ID
-            message: 用户消息
-            
+            message: 用户消息（经过预处理的 content）
+            is_external: 是否来自外部源, 外部请求不会触发短时记忆维护
+
         Returns:
             AI响应
         """
         try:
+            # 传入感知系统对消息做最后统一处理
+            senses = SensorySystem()
+            perceived = await senses.perceive({"content": message})
+            final_content = perceived.get("content", message)
+
             # 获取对话服务
             conversation_service = self.ai_container.get_conversation_service()
             
             # 处理对话
             conversation_result = await conversation_service.process_conversation(
                 user_id=user_id,
-                message=message,
-                conversation_id=self.current_conversation_id
+                message=final_content,
+                conversation_id=self.current_conversation_id,
+                is_external=is_external
             )
             
             # 获取情感状态

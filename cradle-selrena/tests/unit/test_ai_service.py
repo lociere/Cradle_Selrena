@@ -8,7 +8,7 @@ if root not in sys.path:
     sys.path.insert(0, root)
 
 import pytest
-from selrena.core.ai_service import SimpleAIService
+from selrena.core.ai_service import SimpleAIService, AIService
 
 
 async def _run_service_start_stop(service: SimpleAIService):
@@ -33,3 +33,25 @@ async def _run_service_response(svc: SimpleAIService):
 def test_simple_service_response():
     svc = SimpleAIService()
     asyncio.run(_run_service_response(svc))
+
+
+def test_ai_service_external_message(tmp_path):
+    """AIService should accept external-style payload and still process it without using memory."""
+    # create a real AIService with HTTP transport pointing to unused port (not actually connecting)
+    cfg = tmp_path / "cfg"
+    data = tmp_path / "data"
+    service = AIService(event_bus_host="localhost", event_bus_port=12345,
+                        config_dir=str(cfg), data_dir=str(data))
+    payload = {"content": [{"type": "text", "text": "external"}], "is_external_source": True}
+    async def run():
+        # container already created in constructor
+        await service.ai_container.initialize(llm_config={}, use_local_llm=False)
+        # subscribe internal event
+        events = []
+        from selrena.utils.event_bus import subscribe
+        unsub = subscribe("ai.response", lambda r: events.append(r))
+        await service._handle_user_input({"payload": payload})
+        unsub()
+        # ensure internal event fired
+        assert events, "内部事件未发布"
+    asyncio.run(run())
