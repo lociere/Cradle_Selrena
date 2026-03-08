@@ -161,8 +161,6 @@ node_modules/
 package-lock.json
 
 # JS/TS packages and generated protocol code
-packages/
-protocol/
 
 # Nested Python package directory created during development
 cradle-selrena/
