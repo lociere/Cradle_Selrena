@@ -1,14 +1,6 @@
-# 开发指南
+# Python AI 核心层开发指南
 
-本仓库的开发文档已拆分为三份独立文件，便于按语言与职责查阅：
-
-- [Python AI 核心层开发指南](python_ai_core_development.md)
-- [系统内核层开发指南（TS）](ts_kernel_development.md)
-- [渲染交互层开发指南（TS+React）](ts_renderer_development.md)
-
-> 原 `layer_development_guidelines.md` 仅作为目录，具体内容请点击上方链接。
-
-
+本部分覆盖 Python 包中的所有层级，从基础设施到推理引擎，应遵循项目的 DDD 分层结构。
 
 ## 1. 核心基础设施层（core）
 说明此层代码负责支撑整个平台的运行环境，所有模块均通过生命周期管理注册。
@@ -263,6 +255,4 @@ class EngineRouter:
 
 ---
 
----
-
-> 此文档为模板，后续根据项目需求逐层补充示例和注意事项。
+> **此文档为模板**，后续根据项目需求逐层补充示例和注意事项。
