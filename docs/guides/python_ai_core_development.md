@@ -16,14 +16,16 @@ selrena/
 ```
 
 
-## 1. 核心基础设施层（core）
-说明此层代码负责支撑整个平台的运行环境，所有模块均通过生命周期管理注册。
+## 1. 基础设施层（infrastructure）
+这一层原来称为 core，现在统一命名为 infrastructure，以避免与其它语言中 core 概念混淆。
+它包含配置管理、事件总线客户端、服务启动器等组件，所有模块通过生命周期接口注册。
 
 ### 主要组件
 * `config_manager.py` – 负责从内核或本地加载配置并校验（Pydantic）。
 * `event_bus_client.py` – 订阅/发布内核事件的轻量客户端。
 * `ai_service.py` – 封装对 ConversationService/MemoryService 等调用，供 TS 内核使用。
 * `main_service.py` – 在容器启动时创建并初始化各子服务。
+* `lifecycle.py` – 定义生命周期接口，所有基础设施模块必实现。
 
 ### 开发要点
 1. **生命周期**: 继承 `Lifecycle` 接口（`core/lifecycle.py`），在 `on_start`/`on_stop` 里启动/清理资源。
