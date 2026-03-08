@@ -178,8 +178,8 @@ cradle-selrena/
 │   │       ├── __init__.py     # 包入口，定义对外 API
 │   │       ├── main.py         # 进程唯一入口，仅做生命周期管理，无业务代码
 │   │       ├── container.py    # 依赖注入容器（彻底解决循环依赖，模块间无硬耦合）
-│   │       # ========== 核心基础设施层（core） =========
-│   │       ├── core/
+│   │       # ========== 基础设施层（infrastructure）========
+│   │       ├── infrastructure/
 │   │       │   ├── __init__.py
 │   │       │   ├── config_manager.py   # 配置管理（从内核同步·无本地文件读写）
 │   │       │   ├── event_bus.py        # 事件总线客户端（仅和第一层内核通信）
