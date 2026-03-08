@@ -169,13 +169,13 @@ cradle-selrena/
 │   └── @cradle-selrena/protocol-ts/
 
 # ========== 3. Python AI 核心层（纯业务零耦合·借鉴旧版详细设计） ==========
-├── cradle-selrena/ (Python 代码位于 `src/selrena` 包，旧名 `cradle_selrena_core` 已逐步迁移)
+├── cradle-selrena/ (Python 代码位于 `src/selrena` 包)
 │   ├── pyproject.toml          # PEP 621 现代Python包标准配置
 │   ├── requirements.txt        # 依赖锁定文件（pip-compile生成，版本固定）
 │   ├── README.md              # Python包说明文档
 │   ├── src/                    # 严格 PEP 标准 src-layout 结构（彻底解决导入问题）
 │   │   └── selrena/            # Python唯一包名，包含所有核心模块（通过 `selrena` 访问）
-│   │       ├── __init__.py     # 包入口，重导出老模块（迁移期间兼容）
+│   │       ├── __init__.py     # 包入口，定义对外 API
 │   │       ├── main.py         # 进程唯一入口，仅做生命周期管理，无业务代码
 │   │       ├── container.py    # 依赖注入容器（彻底解决循环依赖，模块间无硬耦合）
 │   │       # ========== 框架核心基础设施（纯内部工具·无外界IO） ==========
