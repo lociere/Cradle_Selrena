@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "selrena"
+version = "0.0.0"
+description = "Selrena core Python package (formerly cradle_selrena, includes compatibility shim)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pydantic>=2.0",
+  "pytest>=7.0"
+]
+
+[project.urls]
+"Homepage" = "https://example.local/cradle-selrena"
+
+[tool.setuptools.packages.find]
+where = ["src"]

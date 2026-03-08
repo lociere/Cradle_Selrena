@@ -1,0 +1,15 @@
+# Cradle Selrena Core dependencies
+# Generated from pyproject.toml
+
+pydantic>=2.0
+pytest>=7.0
+
+# Additional dependencies for AI core functionality
+# These will be added as features are implemented
+# - openai>=1.0.0  # For OpenAI LLM backend
+# - transformers>=4.30.0  # For local LLM models
+# - chromadb>=0.4.0  # For vector memory storage
+# - sentence-transformers>=2.2.0  # For embeddings
+# - numpy>=1.24.0  # For numerical operations
+# - aiohttp>=3.8.0  # For async HTTP requests
+# - asyncio>=3.4.0  # For async programming

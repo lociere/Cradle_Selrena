@@ -149,6 +149,24 @@ runtime/
 # assets/models/*
 # !assets/models/.gitkeep
 
+# Project-level summaries and utility scripts
+ARCHITECTURE_OPTIMIZATION_SUMMARY.md
+CONFIG_MIGRATION_COMPLETE.md
+CONFIG_REFACTOR_COMPLETE.md
+CONFIG_REFACTOR_SUMMARY.md
+check_nonascii.py
+
+# Node/npm artifacts
+node_modules/
+package-lock.json
+
+# JS/TS packages and generated protocol code
+packages/
+protocol/
+
+# Nested Python package directory created during development
+cradle-selrena/
+
 # End of file
 
 # Copilot instructions
