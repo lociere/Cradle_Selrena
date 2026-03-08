@@ -255,6 +255,74 @@ class EngineRouter:
 
 ---
 
+## 9. 系统内核层（TS）
+第一层由 TypeScript/Node (Electron) 实现，负责进程管理、事件总线、权限和硬件适配。
+
+### 核心包结构
+位于 `packages/@cradle-selrena/kernel/`，典型目录：
+```
+src/
+├── core/          # 微内核核心模块：lifecycle/event-bus/permission/plugin-manager
+├── adapters/      # 外部适配器（audio/napcat/screenshot/storage）
+├── service/       # 内核标准接口实现
+└── types/         # 类型定义 (从 protocol-ts 生成)
+```
+
+### 开发要点
+1. **事件总线**：所有跨语言通信通过统一协议事件。新增事件必须在 `protocol` 定义并生成类型。
+2. **插件机制**：新功能写成插件挂载到 `core/plugin-manager`；插件应运行在沙箱内，声明权限。
+3. **适配器隔离**：每个适配器仅处理与外部系统的 I/O，业务逻辑在 Python 层。
+4. **语言约束**：此层仅使用 TypeScript，任何 Python/ Rust 逻辑不得进入。
+5. **测试**：使用 Jest 编写单元和集成测试，并模拟事件总线消息。若需跨语言验证，使用 e2e 脚本触发事件并检查输出。
+
+```ts
+// example adapter skeleton
+export class NapcatAdapter implements KernelAdapter {
+  async sendMessage(text: string) {
+    // 转发给 Napcat API
+  }
+}
+```
+
+### 打包与部署
+- 使用 `pnpm run build` 生成 Electron 主进程
+- 保持 `protocol-ts` 在构建步骤中自动更新
+
+---
+
+## 10. 渲染交互层（TS + React）
+渲染层位于 `packages/@cradle-selrena/renderer/`，负责 Live2D 形象、UI 和用户交互。
+
+### 包结构
+```
+src/
+├── components/      # Live2D, FloatWindow, ChatPanel, DebugPanel, SettingPanel
+├── store/           # Zustand 状态管理
+├── hooks/           # 自定义 React Hooks
+├── types/           # 类型定义 (从 protocol-ts 引入)
+└── main.tsx         # 渲染进程入口
+```
+
+### 开发要点
+1. **UI 与状态**：所有业务状态由内核通过事件总线推送至渲染层，视图仅订阅状态变化。
+2. **Live2D**：音素同步由内核音频数据驱动，渲染层只负责显示骨骼和表情。
+3. **类型安全**：界面事件与数据模型使用 `protocol-ts` 的 TypeScript 类型，避免手写类型。
+4. **测试**：使用 React Testing Library + Jest 编写组件测试；模拟事件总线可以通过注入 DummyBus。
+
+```tsx
+// 接收内核推送的AI回复
+useEffect(() => {
+  bus.on('ai.response', r => setChat([...chat, r]));
+}, []);
+```
+
+### 打包与优化
+- 使用 Vite 或 webpack，生成 production build
+- 图片/Live2D 模型资源放入 `public/`，按需加载
+- 渲染层无任何业务逻辑，所有决策在 Python，便于独立重构
+
+---
+
 ---
 
 > 此文档为模板，后续根据项目需求逐层补充示例和注意事项。
