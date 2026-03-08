@@ -25,6 +25,31 @@
 
 ## 二、顶层设计铁律（终身遵守·借鉴旧版核心原则）
 
+### 旧‑新架构优劣对比与改进路径
+旧架构以 `SoulIntellect` 为核心，将感知、记忆、思考与行动一把抓，逻辑集中、方便理解；但它也导致单点复杂、难测试、与具体LLM/协议耦合，扩展成本高。
+
+新架构贯彻 **分层+端口/适配器**，将流程拆解为：
+* `PerceptionService`（异步预处理、视觉/语音管道）
+* `ConversationService`/`MemoryService`/`ReasoningService`（业务用例）
+* `BrainRouter`（混合LLM策略）、`MemoryCoordinator`（短/长记忆）
+* `ActionDispatcher` 通过内部事件总线播出回复。
+
+优点：职责明晰、可替换、易 Mock，支持 TS/Rust 内核无缝切换；缺点是需要构建更多小型服务，初始学习曲线稍高。
+
+**改进建议**：
+1. 将旧架构的 `SensorySystem`、`MemoryVessel`、`HybridBrainRouter` 封装成独立模块放入 `inference` 或 `application` 层。这样既保留灵活性，又不破坏分层。
+2. 在 Python层引入内部事件总线（`soul/event_bus.py`），为模块间广播提供统一契约。各服务（记忆、感知、思考）订阅相应事件，保持解耦。
+3. 记忆端口扩展向量查询、短时窗口、外部会话标志；MemoryService 包含 `memorize_episode`/`recall_episode` API，内部使用 `MemoryVessel` 实现。
+4. Brain路由器在 `inference/engine_pool` 目录实现，称为 `BrainRouter`，支持配置策略、容灾、视觉转述，为 ConversationService 调用。
+5. 在 TS/内核层和 Rust future模块，保持仅负责协议实现与插件宿主，语义处理完全交给 Python。
+
+全局语言职责应与此改进同步：
+* C/C++ 模块负责高性能推理算子（vector embed、OCR、TTS编解码）、并作为 Python 插件调用。
+* Rust 在内核升级时负责实现事件总线/权限/硬件调度，Python 无需改变。
+
+以上调整既保留旧架构精华，又确保新架构的长期可维护性。
+
+
 1. **分层绝对隔离**：第一层内核是唯一与外界交互的层，Python核心层仅做纯AI逻辑推理与决策，绝对不碰任何网络请求、硬件IO、系统命令执行，所有对外需求仅通过标准化事件总线向内核发送指令。
 
 2. **开闭原则**：对扩展开放，对修改关闭，新增任何能力（适配器、工具、引擎）仅需新增插件/实现类，核心代码一行不用改，真正实现「一次搭建，终身不返工」。
@@ -195,6 +220,21 @@ cradle-selrena/
 │       ├── conftest.py         # pytest全局配置
 │       ├── unit/               # 单元测试（核心模块覆盖率≥90%）
 │       └── integration/        # 集成测试
+
+# ========== 5. 原生性能模块（C/C++·预编译开箱即用） ==========
+
+## 📄 补充参考文档
+为了便于维护和阅读，以下额外文档已整理到 `docs/` 子目录：
+
+- **架构相关**
+  - [`architecture/python_optimization.md`](architecture/python_optimization.md)：Python 核心架构优化总结
+  - [`architecture/refactor_summary.md`](architecture/refactor_summary.md)：架构重构总结
+- **配置相关**
+  - [`config/migration_complete.md`](config/migration_complete.md)：配置迁移完成报告
+  - [`config/refactor_complete.md`](config/refactor_complete.md)：配置重构完成报告
+  - [`config/refactor_summary.md`](config/refactor_summary.md)：配置重构总结
+
+这些文档原先散落于根目录或临时位置，现已归档分类，后续内容请直接更新对应文件。
 
 # ========== 5. 原生性能模块（C/C++·预编译开箱即用） ==========
 ├── native-extensions/

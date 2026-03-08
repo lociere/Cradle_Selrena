@@ -7,6 +7,7 @@ from selrena.domain.emotion import EmotionCategory, EmotionState
 from selrena.schemas.chat import Message, ChatHistory
 from selrena.domain.memory import Memory, MemoryType
 from selrena.domain.persona import Persona
+from selrena.soul.persona import PersonaManager
 from selrena.inference.llm import LLMBackend
 from selrena.ports import KernelPort, MemoryPort
 from selrena.utils.logger import logger
@@ -48,6 +49,8 @@ class ConversationService:
         self.llm = llm
         self.kernel = kernel
         self.memory = memory
+        # wrap persona in a manager for prompt construction
+        self.persona_manager = PersonaManager(persona)
         self.emotion = EmotionState()
         logger.info("ConversationService 初始化完成")
     
@@ -114,8 +117,9 @@ class ConversationService:
         msgs = [m.content for m in history.messages]
         clean_msgs = MultimodalPreprocessor.sanitize_for_text_core(msgs)
 
+        # use PersonaManager to build the system prompt (adds timestamp etc.)
         context_parts = [
-            self.persona.to_prompt(),
+            self.persona_manager.build_system_prompt(),
             "\n# 对话历史\n",
         ]
         for idx, m in enumerate(clean_msgs):
