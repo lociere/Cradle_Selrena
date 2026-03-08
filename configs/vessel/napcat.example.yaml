@@ -1,5 +1,0 @@
-# Napcat Config Example
-# Copy to napcat.yaml
-enable: true
-listen_port: 6200     # default port
-token: "YOUR_TOKEN_HERE"  # optional, used for subprotocol validation
