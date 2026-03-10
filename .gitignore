@@ -96,6 +96,10 @@ tests/temp/
 tests/**
 !tests/.gitkeep
 
+# 忽略仓库内重命名子目录下的测试（保留占位）
+Cradle_Selrean_core/tests/**
+!Cradle_Selrean_core/tests/.gitkeep
+
 # -------------------------
 # Jupyter / 笔记本
 # -------------------------
@@ -175,10 +179,8 @@ package-lock.json
 
 # 开发时可能出现的嵌套 Python 包目录
 
-# 仓库目录（重命名以避免与包名冲突）
-# 旧名：cradle-selrena
-# 新名：Cradle_Selrean_core
-Cradle_Selrean_core/
+# 注意：不要忽略整个 Cradle_Selrean_core 子目录（该目录包含可跟踪的源码）
+# 仅针对其中的测试/缓存/大模型等需忽略的子路径进行规则定义。
 # -------------------------
 # 项目专属补充：模型/构建/缓存等大文件
 # -------------------------
