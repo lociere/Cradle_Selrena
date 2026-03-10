@@ -6,6 +6,14 @@ __pycache__/
 *$py.class
 .pytest_cache/
 *.so
+# -------------------------
+# 通用：Python 忽略项
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.so
 .Python
 build/
 dist/
@@ -17,7 +25,7 @@ pip-wheel-metadata/
 pip-delete-this-directory.txt
 
 # -------------------------
-# Virtual environments
+# 虚拟环境
 # -------------------------
 .venv/
 venv/
@@ -26,7 +34,7 @@ env/
 env.bak/
 
 # -------------------------
-# Runtime / data / caches
+# 运行时 / 数据 / 缓存
 # -------------------------
 data/cache/
 data/memoey/
@@ -45,9 +53,10 @@ __pypackages__/
 .runtime-*/
 
 # -------------------------
-# Secrets & configs
+# 秘密/配置 文件（忽略真实配置）
+# 但保留示例/模板文件以供参考
 # -------------------------
-# Ignore all actual configs
+# 忽略实际配置文件
 configs/**/*.yaml
 configs/*.yaml
 configs/**/*.json
@@ -55,7 +64,7 @@ configs/*.json
 configs/**/*.toml
 configs/*.toml
 
-# Allow example/template files
+# 允许示例/模板文件被跟踪
 !configs/**/*.example.yaml
 !configs/*.example.yaml
 !configs/**/*.example.json
@@ -65,7 +74,7 @@ configs/*.toml
 *.pem
 
 # -------------------------
-# Logs & coverage
+# 日志与覆盖率报告
 # -------------------------
 logs/*.log
 *.log
@@ -76,28 +85,32 @@ htmlcov/
 pytestdebug.log
 
 # -------------------------
-# Test artifacts
+# 测试产物（默认全部忽略，但保留占位文件）
 # -------------------------
 .pytest_cache/
 tests/__pycache__/
 tests/temp/
 .hypothesis/
 
+# 忽略所有测试文件（保留 tests/.gitkeep 占位）
+tests/**
+!tests/.gitkeep
+
 # -------------------------
-# Notebooks
+# Jupyter / 笔记本
 # -------------------------
 .ipynb_checkpoints/
 *.ipynb
 
 # -------------------------
-# Databases
+# 本地数据库文件
 # -------------------------
 *.sqlite3
 *.db
 *.db-journal
 
 # -------------------------
-# IDEs / editors
+# 编辑器 / IDE 文件
 # -------------------------
 .vscode/
 .idea/
@@ -107,14 +120,14 @@ tests/temp/
 *~
 
 # -------------------------
-# OS files
+# 操作系统产生的文件
 # -------------------------
 .DS_Store
 Thumbs.db
 desktop.ini
 
 # -------------------------
-# Project specific / assets
+# 项目专用：静态资源与临时内容
 # -------------------------
 assets/models/*
 !assets/models/.gitkeep
@@ -125,47 +138,84 @@ assets/images/*
 assets/**/tmp/
 assets/**/.cache/
 
-# Keep pytest metadata files tracked (README & CACHEDIR.TAG)
+# 保留 pytest 元数据文件(README & CACHEDIR.TAG)
 .pytest_cache/README.md
 .pytest_cache/CACHEDIR.TAG
 .pytest_cache/.gitignore
 
-# Scripts / build output
+# 脚本/构建输出
 scripts/output/
 dist/
 build/
 
-# Documentation
-docs/architecture/
-docs/operational/
-!docs/README.md
+# 文档目录（整个忽略）
+docs/
 
-# Runtime files
+# 运行时相关文件夹
 runtime/
 
 # -------------------------
-# Optional: ignore local model cache (uncomment if desired)
+# 可选：忽略本地模型缓存（如需启用，取消注释）
 # -------------------------
 # assets/models/*
 # !assets/models/.gitkeep
 
-# Project-level summaries and utility scripts
+# 项目层面工具/摘要文件（仍然跟踪）
 ARCHITECTURE_OPTIMIZATION_SUMMARY.md
 CONFIG_MIGRATION_COMPLETE.md
 CONFIG_REFACTOR_COMPLETE.md
 CONFIG_REFACTOR_SUMMARY.md
 check_nonascii.py
 
-# Node/npm artifacts
+# Node/npm 产物
 node_modules/
 package-lock.json
 
-# JS/TS packages and generated protocol code
+# JS/TS 生成/协议代码
 
-# Nested Python package directory created during development
+# 开发时可能出现的嵌套 Python 包目录
 cradle-selrena/
 
-# End of file
+# -------------------------
+# 项目专属补充：模型/构建/缓存等大文件
+# -------------------------
+# 本地模型文件（大型二进制）
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.bin
+assets/models/**/*.gguf
+assets/models/**/*.safetensors
 
-# Copilot instructions
+# 本地模型缓存、临时下载及转换输出
+runtime/cache/
+runtime/model_cache/
+temp/
+tts/
+
+# 本地扩展构建产物（编译输出）
+native-extensions/build/
+native-extensions/dist/
+native-extensions/**/*.pyd
+
+# 打包/发布目录
+packages/
+dist/
+build/
+
+# 生成代码/协议/IDE 缓存
+generated/
+.vscode/*.code-workspace
+
+# 数据备份与崩溃转储
+data/backup/
+data/crash/
+
+# 全量日志目录
+logs/
+
+# 如果已有文件已被跟踪，使用 `git rm --cached <file>` 取消跟踪。
+
+# Copilot 指令文件
 .github/copilot-instructions.md
