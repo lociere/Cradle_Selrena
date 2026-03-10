@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cradle-selrena-core"
+version = "0.1.0"
+description = "Python AI core subsystem for Cradle-Selrena"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "pyzmq>=26.0",
+    "langchain-core>=0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["selrena", "selrena.*"]

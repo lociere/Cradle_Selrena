@@ -1,0 +1,3 @@
+pydantic>=2.7
+pyzmq>=26.0
+langchain-core>=0.3

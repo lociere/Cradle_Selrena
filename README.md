@@ -1,5 +1,7 @@
 # Cradle_Selrena (摇篮·月见)
 
+<!-- NOTE: Path for new Python AI layer 'cradle-selrena-core' has been added as part of architectural upgrade. -->
+
 A Python AI subsystem packaged as a single `selrena` module. The
 external interface is the `PythonAICore` class; callers should never
 reach into `_internal` unless they are writing tests or are part of the
