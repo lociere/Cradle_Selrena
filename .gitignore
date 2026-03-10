@@ -174,8 +174,11 @@ package-lock.json
 # JS/TS 生成/协议代码
 
 # 开发时可能出现的嵌套 Python 包目录
-cradle-selrena/
 
+# 仓库目录（重命名以避免与包名冲突）
+# 旧名：cradle-selrena
+# 新名：Cradle_Selrean_core
+Cradle_Selrean_core/
 # -------------------------
 # 项目专属补充：模型/构建/缓存等大文件
 # -------------------------
