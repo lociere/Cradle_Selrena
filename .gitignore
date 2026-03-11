@@ -218,3 +218,5 @@ logs/
 
 # Copilot 指令文件
 .github/copilot-instructions.md
+
+Cradle_Selrena.code-workspace
