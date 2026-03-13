@@ -1,0 +1,1 @@
+# ZMQ IPC bridge singleton

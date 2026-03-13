@@ -1,0 +1,164 @@
+[
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[之佚]发送了一张图片\n[系统视觉批注: 图片内容描述 - 动漫角色棕色头发，闭眼微笑，双手捧着杯子，背景有日文“ほっこり”和花朵图案。]"
+      }
+    ],
+    "timestamp": 1772719368.098863,
+    "metadata": {},
+    "msg_id": 55212758,
+    "reply_to": null,
+    "sender_name": "之佚",
+    "text": "",
+    "display_text": "[之佚]: ",
+    "images": [
+      "https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=EhSLV6U8hmZAyY0DMeeRXBssgY7qcBjOySgg_goox_2kn_aIkwMyBHByb2RQgLsvWhCFcNo5iG9agsmq8yaBonwxegKn-YIBAm5q&rkey=CAMSMCavjbYX35Ap9BD2niU5exbBG1w3ywKiLybtFGVhk0ScR9Pv-VNa7e1nQFPWJRin0Q"
+    ],
+    "routing_mode": "split_tasks",
+    "original_images": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772719370.7878394,
+    "metadata": {},
+    "text": "看起来挺温馨的",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772719378.2192435,
+    "metadata": {},
+    "text": "看起来挺温馨的",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[之佚]: (无文本)"
+      }
+    ],
+    "timestamp": 1772719398.149713,
+    "metadata": {},
+    "msg_id": 871448889,
+    "reply_to": null,
+    "sender_name": "之佚",
+    "text": "",
+    "display_text": "[之佚]: (Imageless)",
+    "images": [],
+    "routing_mode": "split_tasks",
+    "original_images": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772719401.3332264,
+    "metadata": {},
+    "text": "怎么突然发这个",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772719408.5036705,
+    "metadata": {},
+    "text": "怎么突然发这个",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[之佚]: [表情]"
+      }
+    ],
+    "timestamp": 1772723397.853696,
+    "metadata": {},
+    "msg_id": 605988233,
+    "reply_to": null,
+    "sender_name": "之佚",
+    "text": "[表情]",
+    "display_text": "[之佚]: [表情]",
+    "images": [],
+    "routing_mode": "split_tasks",
+    "original_images": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772723411.217934,
+    "metadata": {},
+    "text": "不说话的话我可要猜了哦",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[之佚]: [表情]\n[系统视觉批注: 图片内容描述 - 动漫风格插画，棕色头发女孩双手捧杯，闭眼微笑，背景黄色带装饰图案。]"
+      }
+    ],
+    "timestamp": 1772724006.430914,
+    "metadata": {},
+    "msg_id": 2001673394,
+    "reply_to": null,
+    "sender_name": "之佚",
+    "text": "[表情]",
+    "display_text": "[之佚]: [表情]",
+    "images": [
+      "https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=EhSLV6U8hmZAyY0DMeeRXBssgY7qcBjOySgg_gooxtaSw4eJkwMyBHByb2RQgLsvWhClubeYRjDwtqax0Zkju0l5egKtBIIBAm5q&rkey=CAQSMEB_a4sPggMaKR6QmN1RN60-OabiYansOGNV9CtOv9BOGeFQJh-QYtJPqOROkisQ4w"
+    ],
+    "routing_mode": "split_tasks",
+    "original_images": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772724018.2630985,
+    "metadata": {},
+    "text": "这张图...让我想起某个动漫里的场景呢",
+    "target_user": 2674610139,
+    "source": "Soul"
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[之佚]: 你知道这是个表情包嘛"
+      }
+    ],
+    "timestamp": 1772724037.649558,
+    "metadata": {},
+    "msg_id": 46761615,
+    "reply_to": null,
+    "sender_name": "之佚",
+    "text": "你知道这是个表情包嘛",
+    "display_text": "[之佚]: 你知道这是个表情包嘛",
+    "images": [],
+    "routing_mode": "split_tasks",
+    "original_images": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "timestamp": 1772724047.7637916,
+    "metadata": {},
+    "text": "当然知道，不过我更在意她手里的杯子",
+    "target_user": 2674610139,
+    "source": "Soul"
+  }
+]

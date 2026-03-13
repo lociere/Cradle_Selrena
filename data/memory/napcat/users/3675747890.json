@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "请求添加你为好友",
+    "timestamp": 1772683945.295118
+  },
+  {
+    "role": "assistant",
+    "content": "哦？新朋友呢",
+    "timestamp": 1772683958.666161
+  }
+]

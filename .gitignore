@@ -1,222 +1,125 @@
 # -------------------------
-# Python - common
 # -------------------------
+# Cradle-Selrena: repository .gitignore
+# 目标：按模块组织，保留 docs/ 和 tests/，保留示例配置文件
+# -------------------------
+
+# --- Python & common ---
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
-*.so
-# -------------------------
-# 通用：Python 忽略项
-# -------------------------
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-*.so
+.mypy_cache/
+.pyre/
 .Python
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Env files
+.env
+.env.*
+
+# Build / packaging
 build/
 dist/
-downloads/
-.eggs/
 *.egg-info/
-*.egg
+.eggs/
 pip-wheel-metadata/
 pip-delete-this-directory.txt
 
-# -------------------------
-# 虚拟环境
-# -------------------------
-.venv/
-venv/
-ENV/
-env/
-env.bak/
+# Node
+node_modules/
+package-lock.json
+pnpm-lock.yaml
 
-# -------------------------
-# 运行时 / 数据 / 缓存
-# -------------------------
-data/cache/
-data/memoey/
-data/memory/
-data/selrena/
-data/temp/
-!data/README.txt
-.cache/
-.pyre/
-.mypy_cache/
-__pypackages__/
-.env
-*.env
-.env.*
-.runtime/
-.runtime-*/
-
-# -------------------------
-# 秘密/配置 文件（忽略真实配置）
-# 但保留示例/模板文件以供参考
-# -------------------------
-# 忽略实际配置文件
-configs/**/*.yaml
-configs/*.yaml
-configs/**/*.json
-configs/*.json
-configs/**/*.toml
-configs/*.toml
-
-# 允许示例/模板文件被跟踪
-!configs/**/*.example.yaml
-!configs/*.example.yaml
-!configs/**/*.example.json
-!configs/*.example.json
-!configs/**/README.md
-*.key
-*.pem
-
-# -------------------------
-# 日志与覆盖率报告
-# -------------------------
-logs/*.log
+# Logs and coverage
+logs/
 *.log
 coverage.xml
 .coverage
 .coverage.*
 htmlcov/
-pytestdebug.log
 
-# -------------------------
-# 测试产物（默认全部忽略，但保留占位文件）
-# -------------------------
-.pytest_cache/
-tests/__pycache__/
-tests/temp/
-.hypothesis/
-
-# 忽略所有测试文件（保留 tests/.gitkeep 占位）
-tests/**
-!tests/.gitkeep
-
-# 忽略仓库内重命名子目录下的测试（保留占位）
-Cradle_Selrean_core/tests/**
-!Cradle_Selrean_core/tests/.gitkeep
-
-# -------------------------
-# Jupyter / 笔记本
-# -------------------------
+# Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# -------------------------
-# 本地数据库文件
-# -------------------------
-*.sqlite3
-*.db
-*.db-journal
-
-# -------------------------
-# 编辑器 / IDE 文件
-# -------------------------
-.vscode/
-.idea/
-*.sublime-workspace
-*.sublime-project
-*.swp
-*~
-
-# -------------------------
-# 操作系统产生的文件
-# -------------------------
+# OS files
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# -------------------------
-# 项目专用：静态资源与临时内容
-# -------------------------
-assets/models/*
-!assets/models/.gitkeep
-assets/sounds/*
-!assets/sounds/.gitkeep
-assets/images/*
-!assets/images/.gitkeep
-assets/**/tmp/
-assets/**/.cache/
+# Generated / IDE
+generated/
+.vscode/
+.idea/
+.vscode/*.code-workspace
+*.sublime-workspace
+*.sublime-project
 
-# 保留 pytest 元数据文件(README & CACHEDIR.TAG)
-.pytest_cache/README.md
-.pytest_cache/CACHEDIR.TAG
-.pytest_cache/.gitignore
+# Native / extensions build outputs
+native-extensions/build/
+native-extensions/dist/
+native-extensions/**/*.pyd
 
-# 脚本/构建输出
-scripts/output/
-dist/
-build/
-
-# 文档目录（整个忽略）
-docs/
-
-# 运行时相关文件夹
+# Runtime caches / local model caches
 runtime/
+runtime/cache/
+runtime/model_cache/
+temp/
+cache/
 
-# -------------------------
-# 可选：忽略本地模型缓存（如需启用，取消注释）
-# -------------------------
-# assets/models/*
-# !assets/models/.gitkeep
+# Data backups / crashes
+data/backup/
+data/crash/
 
-# 项目层面工具/摘要文件（仍然跟踪）
+# Assets: large model and binary files
+assets/models/
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.bin
+assets/**/.cache/
+assets/**/tmp/
+
+# TTS / runtime artifacts
+tts/
+
+# Secrets / private configs
+# 忽略实际的敏感配置，但保留示例文件供参考
+configs/*.yaml
+configs/**/*.yaml
+configs/*.json
+configs/**/*.json
+configs/*.toml
+configs/**/*.toml
+secrets.yaml
+secrets.*
+*.key
+*.pem
+
+# 允许跟踪示例/模板文件
+!configs/**/*.example.yaml
+!configs/*.example.yaml
+!configs/**/*.example.json
+!configs/*.example.json
+!configs/**/README.md
+
+# Tests and docs: 保留在版本控制中（不要忽略）
+# 保持 tests/ 和 docs/ 可见以便文档和测试被跟踪
+
+# 保留项目级重要文件
 ARCHITECTURE_OPTIMIZATION_SUMMARY.md
 CONFIG_MIGRATION_COMPLETE.md
 CONFIG_REFACTOR_COMPLETE.md
 CONFIG_REFACTOR_SUMMARY.md
 check_nonascii.py
 
-# Node/npm 产物
-node_modules/
-package-lock.json
-
-# JS/TS 生成/协议代码
-
-# 开发时可能出现的嵌套 Python 包目录
-
-*.gguf
-*.safetensors
-*.pt
-*.pth
-*.bin
-assets/models/**/*.gguf
-assets/models/**/*.safetensors
-
-# 本地模型缓存、临时下载及转换输出
-runtime/cache/
-runtime/model_cache/
-temp/
-tts/
-
-# 本地扩展构建产物（编译输出）
-native-extensions/build/
-native-extensions/dist/
-native-extensions/**/*.pyd
-
-# 打包/发布目录
+# Misc
+scripts/output/
 packages/
-dist/
-build/
-
-# 生成代码/协议/IDE 缓存
-generated/
-.vscode/*.code-workspace
-
-# 数据备份与崩溃转储
-data/backup/
-data/crash/
-
-# 全量日志目录
-logs/
-
-# 如果已有文件已被跟踪，使用 `git rm --cached <file>` 取消跟踪。
-
-# Copilot 指令文件
-.github/copilot-instructions.md
-
-Cradle_Selrena.code-workspace

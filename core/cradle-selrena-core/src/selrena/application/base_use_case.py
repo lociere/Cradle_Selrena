@@ -1,0 +1,1 @@
+# base use case class

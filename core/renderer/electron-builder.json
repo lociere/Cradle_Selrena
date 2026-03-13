@@ -1,0 +1,6 @@
+{
+  "appId": "com.cradle.selrena",
+  "directories": {
+    "output": "dist"
+  }
+}

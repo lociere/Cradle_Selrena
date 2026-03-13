@@ -1,0 +1,16 @@
+[
+  {
+    "role": "user",
+    "content": "",
+    "timestamp": 1772714950.4837465,
+    "metadata": {},
+    "msg_id": 2222,
+    "reply_to": null,
+    "sender_name": "Carol",
+    "text": "hey  @888  you",
+    "display_text": "[Carol]: hey  @888  you",
+    "images": [],
+    "routing_mode": "split_tasks",
+    "is_silent_record": true
+  }
+]

@@ -1,0 +1,7 @@
+[tool.poetry]
+name = "cradle-selrena-core"
+version = "0.1.0"
+description = "Python AI core"
+
+[tool.poetry.dependencies]
+python = "^3.11"
