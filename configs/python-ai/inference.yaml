@@ -1,0 +1,18 @@
+# AI 推理配置（供 Python AI 层使用）
+# 该文件应仅包含推理管道相关参数：模型参数、生命时钟、记忆规则等。
+# 人设（persona）配置请保持在 configs/oc/persona.yaml 中。
+
+inference:
+  model:
+    local_model_path: "assets/models/llama-7b.bin"
+    max_tokens: 1024
+    temperature: 0.8
+    top_p: 0.9
+    frequency_penalty: 0.0
+  life_clock:
+    thought_interval_ms: 30000
+    sleep_interval_ms: 60000
+  memory:
+    max_recall_count: 5
+    retention_days: 30
+    context_limit: 5

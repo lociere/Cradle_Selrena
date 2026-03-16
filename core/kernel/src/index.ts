@@ -1,5 +1,3 @@
 // kernel entry point
-
-export function startKernel() {
-    // lifecycle management
-}
+// 仅用于快速启动内核
+import "./main";

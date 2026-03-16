@@ -2,5 +2,16 @@
   "name": "@cradle-selrena/protocol",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.ts"
+  "main": "src/index.ts",
+  "scripts": {
+    "gen": "buf generate --template buf.gen.yaml",
+    "lint": "buf lint"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.0.0"
+  }
 }

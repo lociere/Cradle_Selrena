@@ -1,0 +1,13 @@
+# LLM 接口配置，用于 Python AI 层调用 OpenAI / Azure / Anthropic 等服务
+#
+# 填写方式：
+#   - api_type: 选择使用的服务类型，如 openai、azure、anthropic
+#   - api_key: 访问密钥（请保护好，不要提交到公开仓库）
+#   - base_url: 可选的自定义 API 地址（用于私有部署或代理）
+#   - model: 如果需要覆盖默认模型，可以在这里指定
+
+api_type: "openai"
+api_key: "YOUR_API_KEY_HERE"
+base_url: ""
+model: "gpt-4o"  # 示例模型名称，可按实际服务调整
+temperature: 0.7

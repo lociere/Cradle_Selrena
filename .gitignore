@@ -33,6 +33,8 @@ pip-delete-this-directory.txt
 
 # Node
 node_modules/
+.pnpm-store/
+.pnpm-store
 package-lock.json
 pnpm-lock.yaml
 
@@ -92,18 +94,16 @@ tts/
 
 # Secrets / private configs
 # 忽略实际的敏感配置，但保留示例文件供参考
-configs/*.yaml
-configs/**/*.yaml
-configs/*.json
-configs/**/*.json
-configs/*.toml
-configs/**/*.toml
+configs/secret/*.yaml
+configs/secret/*.json
+configs/secret/*.toml
 secrets.yaml
 secrets.*
 *.key
 *.pem
 
 # 允许跟踪示例/模板文件
+!configs/secret/*.example.yaml
 !configs/**/*.example.yaml
 !configs/*.example.yaml
 !configs/**/*.example.json

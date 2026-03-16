@@ -1,1 +1,16 @@
-# pnpm monorepo工作空间配置
+packages:
+  - 'core/**'
+  - 'packages/**'
+  - 'packages/*/**'
+  - 'packages/@cradle-selrena/**'
+  - 'assets/**'
+  - 'scripts/**'
+allowBuilds:
+  '@bufbuild/buf': true
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  zeromq: true
+
+shared-workspace-settings:
+  install: true

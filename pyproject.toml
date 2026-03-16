@@ -7,7 +7,7 @@ name = "cradle-selrena"
 version = "0.1.0"
 description = "Cradle_Selrena: 摇篮：月见 — 多模态智能代理框架"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 keywords = ["AI","assistant","napcat","vector-store","chatbot"]
 classifiers = [

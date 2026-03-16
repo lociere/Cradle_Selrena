@@ -1,0 +1,4 @@
+# 记忆规则配置
+max_recall_count: 5
+retention_days: 30
+context_limit: 5

@@ -8,40 +8,28 @@
 
 ```
 configs/
-│
-├── core/                           # Core 层 - 系统核心配置（所有语言共享）
-│   └── system.yaml                 # 系统基础配置（日志、超时、重试等）
-│
-├── domain/                         # Domain 层 - 业务逻辑配置（所有语言共享）
-│   ├── core.yaml                   # 人格、记忆、决策配置
-│   └── persona/                    # 人设专属配置（Python AI 用）
-│       ├── prompts/                # 提示词模板
-│       │   ├── system_prompt.md
-│       │   └── system_prompt.template.md
-│       └── emotions.json           # 情感模型定义
-│
-├── inference/                      # Inference 层 - 推理引擎配置（所有语言共享）
-│   └── engines.yaml                # LLM 引擎池、模型管理
-│
-├── adapters/                       # Adapters 层 - 外部适配器配置（所有语言共享）
-│   ├── napcat.yaml                 # QQ (NapCat) 适配器
-│   ├── discord.yaml                # Discord 适配器（预留）
-│   └── telegram.yaml               # Telegram 适配器（预留）
-│
-├── platforms/                      # 平台特定配置（按语言/技术划分）
-│   ├── live2d.yaml                 # Live2D 模型配置（TS/Node.js 用）
-│   └── audio.yaml                  # 音频引擎配置（TS/Node.js 用）
-│
-├── environments/                   # 环境分层配置（所有语言共享）
-│   ├── settings.yaml               # 通用设置（开发/生产/测试）
-│   ├── development.yaml            # 开发环境特定配置
-│   └── production.yaml             # 生产环境特定配置
-│
-├── secrets.yaml                    # 敏感信息（应加入 .gitignore）
-├── secrets.example.yaml            # 敏感信息模板
-│
-├── voice_presets.yaml              # 语音预设配置
-└── voice_presets.example.yaml      # 语音预设模板
+├── general.yaml               # 全局通用配置（项目名称/版本/路径等）
+├── kernel/                    # 内核层配置（TS 内核专用）
+│   ├── ipc.yaml
+│   ├── lifecycle.yaml
+│   ├── memory.yaml
+│   └── plugin.yaml
+├── renderer/                  # 渲染层配置（UI/窗口/Live2D 等）
+│   ├── live2d.yaml
+│   └── window.yaml
+├── python-ai/                 # Python AI 层配置（人格/推理/LLM）
+│   ├── persona.yaml
+│   ├── inference.yaml
+│   └── llm.yaml
+├── plugin/                    # 插件系统配置（启用插件列表等）
+│   └── enabled-plugins.yaml
+├── plugin-samples/            # 插件示例配置（模板 / 参考用）
+│   ├── core-scene.yaml
+│   ├── live-platform.yaml
+│   └── napcat-qq.yaml
+└── secret/                    # 私密配置（不应提交到 Git）
+    ├── secrets.yaml
+    └── secrets.example.yaml
 ```
 
 ## 🏗️ 架构分层说明

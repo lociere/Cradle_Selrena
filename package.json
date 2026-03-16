@@ -1,0 +1,18 @@
+{
+	"name": "cradle-selrena",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"bootstrap": "pnpm install",
+		"build": "pnpm -w run build:all",
+		"build:all": "pnpm -w --filter ./core/... run build || true",
+		"dev": "pnpm -w run dev:all",
+		"dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
+		"test": "pnpm -w run test:all",
+		"test:all": "pnpm -w --filter ./core/... run test || true"
+	},
+	"devDependencies": {
+		"concurrently": "^8.0.0",
+		"pnpm": "^9.15.9"
+	}
+}

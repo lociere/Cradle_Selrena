@@ -1,1 +1,0 @@
-// install plugin script

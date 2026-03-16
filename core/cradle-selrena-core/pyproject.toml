@@ -1,7 +1,45 @@
 [tool.poetry]
 name = "cradle-selrena-core"
 version = "0.1.0"
-description = "Python AI core"
+description = "Python AI core (Selrena soul layer)"
+authors = ["Cradle Maintainers <dev@cradle.local>"]
+
+packages = [
+  { include = "selrena", from = "src" }
+]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<4.0"
+pydantic = "^2.7"
+pyzmq = "^26.0"
+langchain-core = "^0.3"
+openai = "^1.30"
+transformers = "^4.40"
+llama-cpp-python = {version = "^0.3.16", optional = true}
+numpy = "^1.24"
+Pillow = "^9.0"
+python-dotenv = "^1.0"
+pyyaml = "^6.0"
+loguru = "^0.7"
+requests = "^2.31"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0"
+pytest-asyncio = "^0.21"
+black = "^24.0"
+isort = "^5.12"
+mypy = "^0.991"
+
+[tool.poetry.scripts]
+selrena-core = "selrena.main:main"
+
+[tool.poetry.urls]
+"Documentation" = "https://example.local/docs"
+
+[tool.poetry.extras]
+# Optional extras for local accelerated inference
+gpu = ["llama-cpp-python"]
+
+[build-system]
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"

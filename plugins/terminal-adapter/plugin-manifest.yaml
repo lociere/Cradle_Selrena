@@ -1,0 +1,12 @@
+id: terminal-adapter
+name: 终端交互适配器
+version: 1.0.0
+author: Selrena Team
+description: 基于终端的简单交互插件，用于验证插件机制是否正常运行
+main: index.js
+minAppVersion: 0.1.0
+permissions:
+  - CHAT_SEND
+  - MEMORY_READ
+  - MEMORY_WRITE
+  - EVENT_SUBSCRIBE
