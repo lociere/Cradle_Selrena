@@ -12,6 +12,7 @@ inference:
   life_clock:
     thought_interval_ms: 30000
     sleep_interval_ms: 60000
+    active_thought_enabled: false
   memory:
     max_recall_count: 5
     retention_days: 30

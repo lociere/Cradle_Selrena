@@ -13,6 +13,7 @@ from enum import StrEnum
 from uuid import uuid4
 from datetime import datetime
 from typing import List, Dict, Optional
+import asyncio
 from selrena.domain.multimodal.multimodal_content import MultimodalContent
 from selrena.core.event_bus import DomainEvent, DomainEventBus
 from selrena.core.observability.logger import get_logger
@@ -127,8 +128,13 @@ class LongTermMemory:
             fragment: 长期记忆片段
         """
         self._memories[fragment.memory_id] = fragment
-        # 发布同步事件，通知内核持久化
-        self._event_bus.publish(MemorySyncEvent(memory_fragment=fragment))
+        # 发布同步事件，通知内核持久化（在当前 asyncio loop 中调度为 task）
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._event_bus.publish(MemorySyncEvent(memory_fragment=fragment)))
+        except RuntimeError:
+            # 无 event loop（如单元测试），跳过异步发布
+            pass
         logger.info(
             "新增长期记忆完成",
             memory_id=fragment.memory_id,

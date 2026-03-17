@@ -9,7 +9,8 @@
 """
 from selrena.ports.outbound.kernel_event_port import KernelEventPort
 from selrena.domain.memory.long_term_memory import LongTermMemoryFragment
-from selrena.bridge.kernel_bridge import KernelBridge
+from selrena.domain.memory.short_term_memory import ShortTermMemoryFragment
+from selrena.adapters.outbound.kernel_bridge import KernelBridge
 from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
@@ -46,6 +47,23 @@ class KernelEventOutboundAdapter(KernelEventPort):
             }
         }
         # 通过桥接层发送给内核
+        await self.kernel_bridge.send_message(message)
+
+    async def send_short_term_memory_sync(self, scene_id: str, fragment: ShortTermMemoryFragment) -> None:
+        """发送短期记忆同步事件给内核"""
+        message = {
+            "type": "short_term_memory_sync",
+            "payload": {
+                "fragment": {
+                    "memory_id": fragment.memory_id,
+                    "scene_id": scene_id,
+                    "role": fragment.role,
+                    "content": fragment.content,
+                    "importance": fragment.importance,
+                    "timestamp": fragment.timestamp.isoformat(),
+                }
+            }
+        }
         await self.kernel_bridge.send_message(message)
 
     async def send_state_sync(self, state: dict) -> None:

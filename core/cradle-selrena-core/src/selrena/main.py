@@ -10,8 +10,39 @@
 """
 import asyncio
 import argparse
+import os
 import sys
+from pathlib import Path
 from typing import Final
+
+# Ensure that `selrena` package can be imported when run from source (without installing). This is
+# especially important when the TS kernel launches Python via `python -m selrena.main`.
+# It locates the repository root by walking upward until it finds a `pyproject.toml` or `pnpm-workspace.yaml`.
+# Then it prepends the Python source directory to sys.path.
+repo_root = Path(__file__).resolve()
+for _ in range(20):
+    # Prefer the monorepo root marker. If not found, fallback to pyproject.toml.
+    if (repo_root / "pnpm-workspace.yaml").exists():
+        break
+    if (repo_root / "pyproject.toml").exists():
+        # Note: this pyproject may be inside a subpackage; keep searching for pnpm-workspace.yaml.
+        pass
+    if repo_root.parent == repo_root:
+        break
+    repo_root = repo_root.parent
+
+src_path = repo_root / "core" / "cradle-selrena-core" / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+# On Windows, asyncio defaults to ProactorEventLoop which is incompatible with zmq's add_reader.
+# Ensure selector policy is set before any zmq/asyncio interaction.
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except AttributeError:
+        pass
+
 from selrena.core.config import GlobalAIConfig
 from selrena.container import DIContainer
 from selrena.core.lifecycle import Lifecycle
@@ -69,16 +100,25 @@ class PythonAICore(Lifecycle):
 
             # 2. 启动内核通信桥接
             kernel_bridge = self.container.get_kernel_bridge()
-            await kernel_bridge.start(self.bind_address)
+            connect_address = self.bind_address
+            # 适配本地回环地址
+            if connect_address.startswith("tcp://0.0.0.0"):
+                connect_address = connect_address.replace("tcp://0.0.0.0", "tcp://127.0.0.1")
 
-            # 3. 唤醒月见
+            # 启动连接
+            await kernel_bridge.start(connect_address)
+
+            # 3. 发出首条状态同步消息
             self_entity = self.container.get_self_entity()
+            await self.container.get_outbound_adapter().send_state_sync(self_entity.get_state())
+
+            # 4. 唤醒月见
             self_entity.wake_up()
 
-            # 4. 标记为运行中
+            # 5. 标记为运行中
             self._is_running = True
 
-            # 5. 启动主运行循环
+            # 6. 启动主运行循环
             self._main_task = asyncio.create_task(self._main_loop())
 
             logger.info("Python AI 核心启动成功！月见已醒来")
@@ -106,12 +146,18 @@ class PythonAICore(Lifecycle):
 
         # 2. 让月见进入休眠
         if hasattr(self, "container"):
-            self_entity = self.container.get_self_entity()
-            self_entity.sleep()
+            try:
+                self_entity = self.container.get_self_entity()
+                self_entity.sleep()
+            except Exception as e:
+                logger.error(f"Error during entity sleep: {e}")
 
             # 3. 停止内核通信桥接
-            kernel_bridge = self.container.get_kernel_bridge()
-            await kernel_bridge.stop()
+            try:
+                kernel_bridge = self.container.get_kernel_bridge()
+                await kernel_bridge.stop()
+            except Exception as e:
+                logger.error(f"Error stopping kernel bridge: {e}")
 
         logger.info("Python AI 核心已停止，月见已进入休眠")
 
@@ -121,9 +167,10 @@ class PythonAICore(Lifecycle):
         while self._is_running:
             try:
                 # 同步当前状态给内核
-                self_entity = self.container.get_self_entity()
-                outbound_adapter = self.container.get_outbound_adapter()
-                await outbound_adapter.send_state_sync(self_entity.get_state())
+                if hasattr(self, "container"):
+                    self_entity = self.container.get_self_entity()
+                    outbound_adapter = self.container.get_outbound_adapter()
+                    await outbound_adapter.send_state_sync(self_entity.get_state())
 
                 # 每秒同步一次状态
                 await asyncio.sleep(1)
@@ -143,37 +190,54 @@ def main():
     Python AI层唯一命令行启动入口
     由TS内核通过子进程启动，所有参数由内核传入
     启动参数示例：
-    python -m selrena.main --config-path ./config.json --bind-address tcp://127.0.0.1:8765
+    python -m selrena.main --config-json '{...}' --bind-address tcp://127.0.0.1:8765
+
+    也支持通过环境变量注入（供 TS 内核启动时使用）：
+      SELRENA_CONFIG / SELRENA_IPC_BIND_ADDRESS
     """
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="月见（Selrena）数字生命 Python AI 核心")
     parser.add_argument(
         "--config-json",
         type=str,
-        required=True,
-        help="JSON格式的全局配置字符串，由TS内核注入"
+        required=False,
+        help="JSON格式的全局配置字符串，由TS内核注入（优先）"
     )
     parser.add_argument(
         "--bind-address",
         type=str,
-        required=True,
-        help="ZMQ IPC绑定地址，用于和TS内核通信"
+        required=False,
+        help="ZMQ IPC绑定地址，用于和TS内核通信（优先）"
     )
     args = parser.parse_args()
 
-    # 解析配置
+    # 解析配置（支持通过环境变量传入）
     try:
         import json
-        config_dict = json.loads(args.config_json)
+
+        config_json = args.config_json or os.environ.get("SELRENA_CONFIG")
+        bind_address = args.bind_address or os.environ.get("SELRENA_IPC_BIND_ADDRESS")
+
+        if not config_json or not bind_address:
+            raise ValueError("缺少 SELRENA_CONFIG 或 SELRENA_IPC_BIND_ADDRESS，无法启动")
+
+        config_dict = json.loads(config_json)
         config = GlobalAIConfig(**config_dict)
     except Exception as e:
         logger.critical(f"配置解析失败: {str(e)}", exc_info=True)
         sys.exit(1)
 
     # 创建AI核心实例
-    ai_core = PythonAICore(config=config, bind_address=args.bind_address)
+    ai_core = PythonAICore(config=config, bind_address=bind_address)
 
     # 启动事件循环
+    # Windows 默认使用 ProactorEventLoop，但 zmq 需要 selector-style loop.
+    if sys.platform == "win32":
+        try:
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        except AttributeError:
+            pass
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -182,8 +246,22 @@ def main():
         await ai_core.stop()
         loop.stop()
 
-    for sig in (asyncio.signals.SIGINT, asyncio.signals.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+    # Windows does not support asyncio.signals; fall back to signal.signal
+    import signal
+
+    def _register_signal(sig):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+        except NotImplementedError:
+            # Add fallback for Windows / environments where add_signal_handler is unsupported
+            signal.signal(sig, lambda *_: asyncio.create_task(shutdown()))
+
+    if hasattr(asyncio, "signals"):
+        for sig in (asyncio.signals.SIGINT, asyncio.signals.SIGTERM):
+            _register_signal(sig)
+    else:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            _register_signal(sig)
 
     # 启动AI核心
     try:

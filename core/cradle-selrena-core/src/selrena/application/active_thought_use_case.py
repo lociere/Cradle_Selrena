@@ -8,6 +8,7 @@
 3. 不碰任何场景规则，仅做纯思维生成
 """
 from dataclasses import dataclass
+from typing import ClassVar
 from .base_use_case import BaseUseCase
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.core.observability.logger import get_logger
@@ -48,6 +49,7 @@ class ActiveThoughtUseCase(BaseUseCase[ActiveThoughtInput, ActiveThoughtOutput])
     真人逻辑对齐：对应人脑的走神、发呆、内心独白，不需要外界触发
     """
     # 依赖注入：全局自我实体
+    lifecycle_log_level: ClassVar[str] = "debug"
     self_entity: SelrenaSelfEntity
 
     async def _execute(self, input_data: ActiveThoughtInput, trace_id: str) -> ActiveThoughtOutput:
@@ -63,6 +65,15 @@ class ActiveThoughtUseCase(BaseUseCase[ActiveThoughtInput, ActiveThoughtOutput])
         self.self_entity.emotion_system.decay()
         current_emotion = self.self_entity.emotion_system.get_state()
         logger.debug("情绪自然衰减完成", trace_id=trace_id, emotion=current_emotion)
+
+        # 检查是否开启主动思维模式
+        if not getattr(self.self_entity.inference_config.life_clock, "active_thought_enabled", False):
+            logger.debug("主动思维模式已关闭，跳过生成", trace_id=trace_id)
+            return ActiveThoughtOutput(
+                thought_content="",
+                emotion_state=current_emotion,
+                trace_id=trace_id
+            )
 
         # ======================================
         # 步骤2：生成主动思维

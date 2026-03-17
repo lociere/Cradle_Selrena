@@ -10,6 +10,7 @@
 from abc import ABC, abstractmethod
 from selrena.application.chat_use_case import ChatInput, ChatOutput
 from selrena.application.active_thought_use_case import ActiveThoughtInput, ActiveThoughtOutput
+from selrena.application.agent_plan_use_case import AgentPlanInput, AgentPlanOutput
 
 
 class PerceptionPort(ABC):
@@ -55,5 +56,33 @@ class PerceptionPort(ABC):
         参数：
             persona_knowledge: 人设知识库内容
             general_knowledge: 通用知识库内容
+        """
+        pass
+
+    @abstractmethod
+    async def on_tts_synthesize(self, text: str, output_path: str) -> dict:
+        """
+        接收内核的TTS请求
+        参数：
+            text: 待合成文本
+            output_path: 输出音频路径
+        返回：标准化响应
+        """
+        pass
+
+    @abstractmethod
+    async def on_asr_recognize(self, audio_path: str) -> dict:
+        """
+        接收内核的ASR请求
+        参数：
+            audio_path: 待识别音频路径
+        返回：标准化响应
+        """
+        pass
+
+    @abstractmethod
+    async def on_agent_plan(self, input_data: AgentPlanInput) -> AgentPlanOutput:
+        """
+        接收任务规划请求（MCP），仅返回思考与工具建议，不执行任务。
         """
         pass

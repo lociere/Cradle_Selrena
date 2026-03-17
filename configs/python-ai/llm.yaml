@@ -6,8 +6,27 @@
 #   - base_url: 可选的自定义 API 地址（用于私有部署或代理）
 #   - model: 如果需要覆盖默认模型，可以在这里指定
 
-api_type: "openai"
-api_key: "YOUR_API_KEY_HERE"
-base_url: ""
-model: "gpt-4o"  # 示例模型名称，可按实际服务调整
+api_type: "deepseek"  # deepseek / openai / azure / anthropic / local
+# api_key 建议通过 configs/secret/secrets.yaml 中的 providers.deepseek.api_key 进行注入，
+# 避免明文写入版本控制系统。
+api_key: ""
+# 如果需要通过代理或特殊域名访问 DeepSeek，可在此配置
+base_url: "https://api.deepseek.com"
+model: "deepseek-chat"  # 默认可用模型，可按账号权限调整
 temperature: 0.7
+
+# 可选：自定义请求结构（对接不同云端模型服务时可灵活配置）
+# request_method: "POST"
+# request_path: "/v1/completions"
+# request_headers:
+#   Accept: "application/json"
+#   X-Custom: "xxx"
+# request_body_template: |-
+#   {
+#     "model": "{model}",
+#     "prompt": "{prompt}",
+#     "temperature": {temperature}
+#   }
+
+# 可选：自定义响应提取路径
+# response_extract: "choices.0.text"

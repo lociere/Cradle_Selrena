@@ -12,9 +12,11 @@ from typing import Final
 from selrena.core.config import GlobalAIConfig
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.inference.llm_engine import LLMEngine
-from selrena.application.chat_use_case import ChatUseCase
-from selrena.application.active_thought_use_case import ActiveThoughtUseCase
-from selrena.bridge.kernel_bridge import KernelBridge
+from selrena.application.chat_use_case import ChatUseCase, ChatInput
+from selrena.application.active_thought_use_case import ActiveThoughtUseCase, ActiveThoughtInput
+from selrena.application.agent_plan_use_case import AgentPlanUseCase, AgentPlanInput
+from selrena.application.memory_sync_use_case import MemorySyncUseCase
+from selrena.adapters.outbound.kernel_bridge import KernelBridge
 from selrena.adapters.inbound.kernel_event_adapter import KernelEventInboundAdapter
 from selrena.adapters.outbound.kernel_event_adapter import KernelEventOutboundAdapter
 from selrena.core.event_bus import DomainEventBus
@@ -83,7 +85,7 @@ class DIContainer:
         # ======================================
         # 3. 推理层实例
         # ======================================
-        llm_engine = LLMEngine(self_entity=self_entity)
+        llm_engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
         self._instances["llm_engine"] = llm_engine
 
         # ======================================
@@ -100,6 +102,9 @@ class DIContainer:
         )
         self._instances["active_thought_use_case"] = active_thought_use_case
 
+        agent_plan_use_case = AgentPlanUseCase(self_entity=self_entity)
+        self._instances["agent_plan_use_case"] = agent_plan_use_case
+
         # ======================================
         # 5. 适配器层实例
         # ======================================
@@ -107,7 +112,8 @@ class DIContainer:
         inbound_adapter = KernelEventInboundAdapter(
             self_entity=self_entity,
             chat_use_case=chat_use_case,
-            active_thought_use_case=active_thought_use_case
+            active_thought_use_case=active_thought_use_case,
+            agent_plan_use_case=agent_plan_use_case,
         )
         self._instances["inbound_adapter"] = inbound_adapter
 
@@ -117,34 +123,79 @@ class DIContainer:
         )
         self._instances["outbound_adapter"] = outbound_adapter
 
+        memory_sync_use_case = MemorySyncUseCase(kernel_event_port=outbound_adapter)
+        self._instances["memory_sync_use_case"] = memory_sync_use_case
+
         # ======================================
         # 6. 注册事件处理器
         # ======================================
         # 注册记忆同步事件处理器
         from selrena.domain.memory.long_term_memory import MemorySyncEvent
-        event_bus.subscribe(MemorySyncEvent, lambda e: outbound_adapter.send_memory_sync(e.memory_fragment))
+        from selrena.domain.memory.short_term_memory import ShortTermMemorySyncEvent
+        event_bus.subscribe(MemorySyncEvent, memory_sync_use_case.on_long_term_memory_sync)
+        event_bus.subscribe(ShortTermMemorySyncEvent, memory_sync_use_case.on_short_term_memory_sync)
 
         # 注册内核消息处理器
         kernel_bridge.register_handler("chat_message", lambda msg: inbound_adapter.on_chat_message(
+            # 兼容协议：优先读取 payload，若缺失则回退到顶层字段。
             ChatInput(
-                user_input=msg["user_input"],
-                scene_id=msg["scene_id"],
-                familiarity=msg.get("familiarity", 0),
+                user_input=msg.get("payload", {}).get("user_input", msg.get("user_input", "")),
+                scene_id=msg.get("payload", {}).get("scene_id", msg.get("scene_id", "default")),
+                familiarity=msg.get("payload", {}).get("familiarity", msg.get("familiarity", 0)),
                 trace_id=msg["trace_id"]
             )
         ))
         kernel_bridge.register_handler("life_heartbeat", lambda msg: inbound_adapter.on_life_heartbeat(
             ActiveThoughtInput(trace_id=msg["trace_id"])
         ))
-        kernel_bridge.register_handler("memory_init", lambda msg: inbound_adapter.on_memory_init(msg["memories"]))
+        kernel_bridge.register_handler(
+            "memory_init",
+            lambda msg: inbound_adapter.on_memory_init(msg.get("payload", {}).get("memories", msg.get("memories", [])))
+        )
         kernel_bridge.register_handler("knowledge_init", lambda msg: inbound_adapter.on_knowledge_init(
-            msg["persona_knowledge"],
-            msg["general_knowledge"]
+            msg.get("payload", {}).get("persona_knowledge", msg.get("persona_knowledge", [])),
+            msg.get("payload", {}).get("general_knowledge", msg.get("general_knowledge", []))
         ))
+
+        # Native推理请求处理（通过既有入站适配器链路统一管理）
+        kernel_bridge.register_handler(
+            "tts_synthesize",
+            lambda msg: inbound_adapter.on_tts_synthesize(
+                msg.get("payload", {}).get("text", msg.get("text", "")),
+                msg.get("payload", {}).get("output_path", msg.get("output_path", ""))
+            )
+        )
+        kernel_bridge.register_handler(
+            "asr_recognize",
+            lambda msg: inbound_adapter.on_asr_recognize(
+                msg.get("payload", {}).get("audio_path", msg.get("audio_path", ""))
+            )
+        )
+        kernel_bridge.register_handler("heartbeat", lambda _msg: self._handle_heartbeat())
+
+        kernel_bridge.register_handler("agent_plan", lambda msg: inbound_adapter.on_agent_plan(
+            AgentPlanInput(
+                user_goal=msg.get("payload", {}).get("user_goal", msg.get("user_goal", "")),
+                scene_id=msg.get("payload", {}).get("scene_id", msg.get("scene_id", "default")),
+                trace_id=msg["trace_id"],
+            )
+        ))
+
+        # 配置初始化处理：内核会通过 config_init 请求注入配置（用于确认通信链路正常运行）
+        kernel_bridge.register_handler("config_init", lambda msg: self._handle_config_init(msg))
 
         # 标记为已初始化
         self._initialized = True
         logger.info("依赖注入容器初始化完成")
+
+    async def _handle_config_init(self, msg: dict) -> dict:
+        """处理内核发送的 config_init 请求，确认通信链路正常。"""
+        logger.info("收到 config_init 请求，确认内核与 Python AI 通信通道可用", trace_id=msg.get("trace_id"))
+        return {"status": "ok"}
+
+    async def _handle_heartbeat(self) -> dict:
+        """处理AI原生桥心跳请求。"""
+        return {"status": "alive"}
 
     # ======================================
     # 实例获取方法

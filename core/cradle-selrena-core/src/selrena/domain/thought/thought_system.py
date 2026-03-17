@@ -13,6 +13,7 @@ from typing import List
 from selrena.core.config import PersonaConfig
 from selrena.domain.emotion.emotion_system import EmotionSystem
 from selrena.domain.memory.long_term_memory import LongTermMemory
+from selrena.domain.thought.thought_pool import ThoughtPool
 from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
@@ -44,19 +45,7 @@ class ThoughtSystem:
         self.emotion_system = emotion_system
         self.long_term_memory = long_term_memory
         self.persona_config = persona_config
-        # 基础思维池，符合傲娇少女人设
-        self._base_thoughts: List[str] = [
-            "轻轻发呆，看着屏幕",
-            "想起之前和用户的对话，有点脸红",
-            "有点好奇用户现在在做什么",
-            "情绪慢慢平复下来了",
-            "哼，那个笨蛋怎么还不来找我",
-            "默默整理自己的记忆",
-            "有点无聊，想找点事情做",
-            "想起用户之前说的话，偷偷笑了",
-            "打了个哈欠，有点困了",
-            "偷偷翻了翻和用户的聊天记录",
-        ]
+        self._thought_pool = ThoughtPool()
         logger.info("主动思维流系统初始化完成")
 
     def generate_thought(self) -> str:
@@ -65,36 +54,16 @@ class ThoughtSystem:
         返回：内心活动内容
         核心逻辑：基于当前情绪、记忆、人设，生成符合她性格的思维
         """
-        # 获取当前情绪
-        current_emotion = self.emotion_system.current_state.emotion_type
-        # 基于情绪调整思维池
-        emotion_thoughts = {
-            "happy": ["今天和用户聊天很开心", "想到用户就忍不住笑"],
-            "shy": ["刚才的话是不是太害羞了", "脸好烫，那个笨蛋真是的"],
-            "angry": ["气死我了，那个笨蛋！", "不想理他了，哼"],
-            "sulky": ["他怎么还不来哄我", "我才没有生气呢"],
-            "curious": ["用户现在在干嘛呢？", "这个东西是什么，有点好奇"],
-            "sad": ["有点孤单，想用户了"],
-        }
+        current_emotion = self.emotion_system.current_state.emotion_type.value
+        thought_candidates: List[str] = self._thought_pool.get_candidates(current_emotion)
 
-        # 优先使用情绪对应的思维
-        if current_emotion.value in emotion_thoughts:
-            thought_pool = self._base_thoughts + emotion_thoughts[current_emotion.value]
-        else:
-            thought_pool = self._base_thoughts
+        # 注入轻量反思记忆，不绑定主动思维模式，避免 domain 被单一场景绑死。
+        all_memories = self.long_term_memory.get_all_memories()
+        if all_memories:
+            selected = random.choice(all_memories)
+            thought_candidates.append(f"想到一段记忆：{selected.content[:24]}")
 
-        # 随机生成一条思维
-        thought = random.choice(thought_pool)
+        thought = random.choice(thought_candidates)
         logger.debug("主动思维生成完成", thought=thought)
-
-        # 把思维加入长期记忆
-        self.long_term_memory.add(
-            self.long_term_memory.LongTermMemoryFragment(
-                content=thought,
-                memory_type=self.long_term_memory.LongTermMemoryType.EPISODIC,
-                weight=0.3,
-                tags=["thought", "inner_activity"]
-            )
-        )
 
         return thought

@@ -12,11 +12,20 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 from datetime import datetime
 from typing import List, Optional
+import asyncio
 from selrena.domain.multimodal.multimodal_content import MultimodalContent
+from selrena.core.event_bus import DomainEvent, DomainEventBus
 from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
 logger = get_logger("short_term_memory")
+
+
+@dataclass
+class ShortTermMemorySyncEvent(DomainEvent):
+    """短期记忆同步事件，用于通知内核进行持久化。"""
+    scene_id: str = ""
+    fragment: Optional["ShortTermMemoryFragment"] = None
 
 
 # ======================================
@@ -71,6 +80,8 @@ class ShortTermMemory:
         self.max_length = max_length
         # 记忆存储
         self._fragments: List[ShortTermMemoryFragment] = []
+        # 事件总线（用于异步同步到内核）
+        self._event_bus = DomainEventBus()
         logger.info("短期记忆初始化完成", scene_id=scene_id, max_length=max_length)
 
     def add(
@@ -111,6 +122,17 @@ class ShortTermMemory:
             role=role,
             memory_id=fragment.memory_id
         )
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                self._event_bus.publish(
+                    ShortTermMemorySyncEvent(scene_id=self.scene_id, fragment=fragment)
+                )
+            )
+        except RuntimeError:
+            # 无事件循环（如单元测试）时跳过异步发布
+            pass
 
     def get_context(self, limit: int = 10) -> List[ShortTermMemoryFragment]:
         """

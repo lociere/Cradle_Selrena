@@ -11,7 +11,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from uuid import uuid4
-from typing import Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar
 from selrena.core.observability.logger import get_logger
 
 # 泛型定义：输入/输出类型
@@ -32,10 +32,17 @@ class BaseUseCase(ABC, Generic[Input, Output]):
     核心作用：统一执行流程、异常处理、全链路追踪
     """
     use_case_name: str = field(init=False)
+    lifecycle_log_level: ClassVar[str] = "info"
 
     def __post_init__(self) -> None:
         """自动设置用例名称为子类类名，无需手动赋值"""
         self.use_case_name = self.__class__.__name__
+
+    def _log_lifecycle(self, message: str, trace_id: str) -> None:
+        if self.lifecycle_log_level == "debug":
+            logger.debug(message, trace_id=trace_id)
+            return
+        logger.info(message, trace_id=trace_id)
 
     @abstractmethod
     async def _execute(self, input_data: Input, trace_id: str) -> Output:
@@ -60,18 +67,12 @@ class BaseUseCase(ABC, Generic[Input, Output]):
         """
         # 生成全链路追踪ID，保证全流程可追溯
         trace_id = trace_id or str(uuid4())
-        logger.info(
-            f"用例 {self.use_case_name} 开始执行",
-            trace_id=trace_id
-        )
+        self._log_lifecycle(f"用例 {self.use_case_name} 开始执行", trace_id)
 
         try:
             # 执行子类实现的核心逻辑
             result = await self._execute(input_data, trace_id)
-            logger.info(
-                f"用例 {self.use_case_name} 执行成功",
-                trace_id=trace_id
-            )
+            self._log_lifecycle(f"用例 {self.use_case_name} 执行成功", trace_id)
             return result
 
         except Exception as e:

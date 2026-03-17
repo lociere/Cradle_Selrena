@@ -4,6 +4,7 @@ import { ChatMessageResponse } from "../ipc/ipc-types";
 import { LongTermMemoryFragment, EmotionState } from "../types";
 
 export interface IKernelProxy {
+  log(level: string, message: string, meta?: Record<string, unknown>): void;
   sendChatMessage(userInput: string, sceneId: string, familiarity?: number): Promise<ChatMessageResponse>;
   getRelevantMemories(query: string, limit?: number): Promise<LongTermMemoryFragment[]>;
   addMemory(memory: Omit<LongTermMemoryFragment, "memory_id" | "timestamp">): Promise<void>;

@@ -6,7 +6,6 @@ export * from './events';
 export * from './interfaces';
 export * from './ipc/ipc-types';
 export * from './config/schema';
-export * from './events/lifecycle-events';
 
 // Plugin system exports
 export * from './plugin/plugin-manifest.schema';

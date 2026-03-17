@@ -14,6 +14,10 @@ from enum import StrEnum
 from uuid import uuid4
 from datetime import datetime
 from selrena.core.exceptions import EmotionException
+from selrena.domain.emotion.emotion_rules import (
+    DEFAULT_INTENSITY_DECAY_ON_NEUTRAL,
+    infer_emotion_by_input,
+)
 from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
@@ -129,25 +133,14 @@ class EmotionSystem:
         # 先执行自然衰减
         self.decay()
 
-        # 情绪触发关键词映射（完全贴合人设，可通过人设配置扩展）
-        trigger_map = {
-            EmotionType.HAPPY: ["喜欢", "爱你", "真棒", "辛苦", "谢谢", "好耶"],
-            EmotionType.SHY: ["害羞", "脸红", "笨蛋", "讨厌啦", "不要", "亲密"],
-            EmotionType.ANGRY: ["气死", "烦", "滚", "离谱", "讨厌"],
-            EmotionType.SULKY: ["哼", "不理你", "随便", "你自己看着办"],
-            EmotionType.CURIOUS: ["什么", "怎么", "为啥", "看看", "新的"],
-            EmotionType.SAD: ["难过", "委屈", "哭了", "孤单"],
-        }
+        inferred = infer_emotion_by_input(user_input)
+        if inferred is not None:
+            emotion_name, intensity_delta = inferred
+            self.update(EmotionType(emotion_name), intensity_delta, trigger=user_input[:20])
+            return
 
-        # 匹配关键词，更新情绪
-        for emotion, keywords in trigger_map.items():
-            for kw in keywords:
-                if kw in user_input:
-                    self.update(emotion, 0.3, trigger=user_input[:20])
-                    return
-
-        # 无匹配关键词，保持当前情绪，轻微衰减
-        self.update(self.current_state.emotion_type, -0.05, trigger=user_input[:20])
+        # 无明显触发，沿当前情绪轻微衰减
+        self.update(self.current_state.emotion_type, DEFAULT_INTENSITY_DECAY_ON_NEUTRAL, trigger=user_input[:20])
 
     def get_state(self) -> dict:
         """

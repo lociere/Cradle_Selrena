@@ -14,16 +14,17 @@ import {
   CoreException,
   ErrorCode,
 } from "@cradle-selrena/protocol";
-import { AppLifecycleState } from "./lifecycle/lifecycle-state.enum";
-import { initLogger, closeLogger, getLogger } from "./observability/logger";
-import { ConfigManager } from "./config/config-manager";
-import { EventBus } from "./event-bus/event-bus";
-import { DBManager } from "./persistence/db-manager";
-import { MemoryRepository } from "./persistence/repositories/memory-repository";
-import { IPCServer } from "./ipc/ipc-server";
-import { PythonAIManager } from "./ai-core/python-ai-manager";
-import { PluginManager } from "./core/plugin-manager";
-import { LifeClockManager } from "./life-clock/life-clock-manager";
+import { AppLifecycleState } from "./core/lifecycle/lifecycle-state.enum";
+import { initLogger, closeLogger, getLogger } from "./core/observability/logger";
+import { ConfigManager } from "./core/config/config-manager";
+import { EventBus } from "./core/event-bus/event-bus";
+import { DBManager } from "./infrastructure/persistence/db-manager";
+import { MemoryRepository } from "./infrastructure/persistence/repositories/memory-repository";
+import { IPCServer } from "./infrastructure/ipc/ipc-server";
+import { PythonAIManager } from "./modules/ai/python-manager";
+import { PluginManager } from "./modules/plugin/plugin-manager";
+import { LifeClockManager } from "./modules/life-clock/life-clock-manager";
+import { MemorySyncManager } from "./modules/memory/memory-sync-manager";
 
 const logger = getLogger("app-root");
 
@@ -103,6 +104,7 @@ export class App {
       await DBManager.instance.init();
       // 初始化记忆仓库
       MemoryRepository.instance;
+      await MemorySyncManager.instance.init();
       const dbStartupTime = Date.now() - dbStart;
       await EventBus.instance.publish(
         new ModuleStartedEvent({
@@ -247,28 +249,32 @@ export class App {
       }, stopTraceContext));
       logger.info("Python AI层已停止");
 
-      // 4. 停止IPC服务端
+      // 4. 停止记忆同步管理器
+      await MemorySyncManager.instance.shutdown();
+      logger.info("记忆同步管理器已停止");
+
+      // 5. 停止IPC服务端
       await IPCServer.instance.stop();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "ipc-server",
       }, stopTraceContext));
       logger.info("IPC服务端已停止");
 
-      // 5. 关闭数据库连接
+      // 6. 关闭数据库连接
       await DBManager.instance.close();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "persistence",
       }, stopTraceContext));
       logger.info("数据库已关闭");
 
-      // 6. 关闭事件总线
+      // 7. 关闭事件总线
       await EventBus.instance.shutdown();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "event-bus",
       }, stopTraceContext));
       logger.info("事件总线已关闭");
 
-      // 7. 关闭日志器
+      // 8. 关闭日志器
       await closeLogger();
 
       this._state = AppLifecycleState.STOPPED;

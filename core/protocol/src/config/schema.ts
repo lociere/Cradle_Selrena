@@ -85,7 +85,7 @@ export const AppConfigSchema = z.object({
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const LLMConfigSchema = z.object({
-  // API类型，例如：openai、azure、anthropic
+  // API类型，例如：openai、azure、anthropic、deepseek、本地(local)
   api_type: z.string().default("openai"),
   // API key 或令牌
   api_key: z.string().optional(),
@@ -94,6 +94,16 @@ export const LLMConfigSchema = z.object({
   // 其他可选参数
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
+
+  // 请求自定义配置（可选）
+  request_method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+  request_path: z.string().optional(),
+  request_headers: z.record(z.string(), z.string()).optional(),
+  // 请求 body 模板，支持 {prompt} / {model} / {temperature} 等占位符
+  request_body_template: z.string().optional(),
+
+  // 响应解析路径，点分隔字段（例如 choices.0.text 或 result）
+  response_extract: z.string().optional(),
 });
 export type LLMConfig = z.infer<typeof LLMConfigSchema>;
 

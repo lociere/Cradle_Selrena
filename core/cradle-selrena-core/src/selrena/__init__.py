@@ -9,11 +9,9 @@ __author__ = "Selrena Dev Team"
 # 仅对外暴露核心入口，内部模块完全隐藏（最小权限原则）
 __all__ = [
     "SelrenaSelfEntity",
-    "PythonAICore",
     "KernelBridge",
 ]
 
 # 延迟导入，避免循环依赖
 from .domain.self.self_entity import SelrenaSelfEntity
-from .bridge.kernel_bridge import KernelBridge
-from .main import PythonAICore
+from .adapters.outbound.kernel_bridge import KernelBridge

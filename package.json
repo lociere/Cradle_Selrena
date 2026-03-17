@@ -1,18 +1,27 @@
 {
-	"name": "cradle-selrena",
-	"version": "0.1.0",
-	"private": true,
-	"scripts": {
-		"bootstrap": "pnpm install",
-		"build": "pnpm -w run build:all",
-		"build:all": "pnpm -w --filter ./core/... run build || true",
-		"dev": "pnpm -w run dev:all",
-		"dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
-		"test": "pnpm -w run test:all",
-		"test:all": "pnpm -w --filter ./core/... run test || true"
-	},
-	"devDependencies": {
-		"concurrently": "^8.0.0",
-		"pnpm": "^9.15.9"
-	}
+  "name": "cradle-selrena",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "bootstrap": "pnpm install",
+    "build": "pnpm -w run build:all",
+    "build:all": "pnpm -w --filter ./core/... run build || true",
+    "dev": "pnpm -w run dev:all",
+    "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
+    "test": "pnpm -w run test:all",
+    "test:all": "pnpm -w --filter ./core/... run test || true",
+    "nx": "nx",
+    "nx:graph": "nx graph",
+    "nx:dev": "nx run-many --target=dev --parallel --projects=kernel,renderer",
+    "nx:start": "nx run-many --target=start --parallel --projects=kernel,renderer",
+    "nx:build": "nx run-many --target=build --parallel --projects=kernel,renderer",
+    "nx:test": "nx run-many --target=test --parallel --projects=kernel,cradle-selrena-core",
+    "chat": "pnpm --filter @cradle-selrena/kernel start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0",
+    "nx": "^16.0.0",
+    "@nx/workspace": "^16.0.0",
+    "pnpm": "^9.15.9"
+  }
 }

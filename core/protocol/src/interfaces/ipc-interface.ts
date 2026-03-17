@@ -1,6 +1,8 @@
 // IPC communication standard interface
 
+import { IPCRequest, IPCResponse } from '../ipc/ipc-types';
+
 export interface IpcAdapter {
-    send(message: any): void;
-    onReceive(callback: (msg: any) => void): void;
+    send(message: IPCRequest): void;
+    onReceive(callback: (msg: IPCResponse) => void): void;
 }

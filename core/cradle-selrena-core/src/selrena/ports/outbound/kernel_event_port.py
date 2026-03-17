@@ -9,6 +9,7 @@
 """
 from abc import ABC, abstractmethod
 from selrena.domain.memory.long_term_memory import LongTermMemoryFragment
+from selrena.domain.memory.short_term_memory import ShortTermMemoryFragment
 
 
 class KernelEventPort(ABC):
@@ -44,5 +45,15 @@ class KernelEventPort(ABC):
             level: 日志级别
             message: 日志内容
             extra: 额外参数
+        """
+        pass
+
+    @abstractmethod
+    async def send_short_term_memory_sync(self, scene_id: str, fragment: ShortTermMemoryFragment) -> None:
+        """
+        发送短期记忆同步事件给内核，写入短期记忆存储。
+        参数：
+            scene_id: 场景ID
+            fragment: 短期记忆片段
         """
         pass

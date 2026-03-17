@@ -8,7 +8,7 @@
 3. 绝对不读取本地配置文件，所有配置由内核通过IPC注入
 4. 100%对齐全局configs的yaml结构
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Dict, List
 
 
@@ -20,8 +20,7 @@ class PersonaConfig(BaseModel):
     OC人设核心配置，由TS内核从全局configs/oc/persona.yaml注入
     运行时完全冻结，不可修改，保证人设终身稳定
     """
-    class Config:
-        frozen = True  # 运行时完全冻结，不可篡改
+    model_config = ConfigDict(frozen=True)  # 运行时完全冻结，不可篡改
 
     # 基础身份信息（终身不变）
     class BasePersona(BaseModel):
@@ -31,7 +30,7 @@ class PersonaConfig(BaseModel):
         gender: str             # 性别
         core_identity: str      # 核心身份定位
         self_description: str   # 自我描述
-        class Config: frozen = True
+        model_config = ConfigDict(frozen=True)
 
     base: BasePersona
     # 性格特质（key=特质名，value=0-10分，用于人设注入）
@@ -50,8 +49,7 @@ class InferenceConfig(BaseModel):
     AI推理配置，由TS内核从全局configs/ai/inference.yaml注入
     运行时冻结，不可修改
     """
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
     # 本地模型配置
     class ModelConfig(BaseModel):
@@ -60,18 +58,19 @@ class InferenceConfig(BaseModel):
         temperature: float          # 温度系数（0-1，越高越随机）
         top_p: float                # 核采样系数
         frequency_penalty: float    # 频率惩罚
-        class Config: frozen = True
+        model_config = ConfigDict(frozen=True)
 
     # 生命时钟配置（由内核驱动，这里仅做参数定义）
     class LifeClockConfig(BaseModel):
         thought_interval_ms: int    # 主动思维触发间隔（毫秒）
-        class Config: frozen = True
+        active_thought_enabled: bool = False  # 主动思维开关（默认关闭）
+        model_config = ConfigDict(frozen=True)
 
     # 记忆配置
     class MemoryConfig(BaseModel):
         max_recall_count: int       # 最大记忆召回数量
         retention_days: int         # 记忆保留天数
-        class Config: frozen = True
+        model_config = ConfigDict(frozen=True)
 
     model: ModelConfig
     life_clock: LifeClockConfig
@@ -79,15 +78,38 @@ class InferenceConfig(BaseModel):
 
 
 # ======================================
+# 云端/API LLM 配置模型
+# ======================================
+class LLMConfig(BaseModel):
+    """云端LLM或API调用参数配置（如 DeepSeek/OpenAI/Azure）"""
+
+    api_type: str  # deepseek / openai / azure / anthropic / local
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+
+    # 可选：自定义请求结构
+    request_method: str | None = None  # GET/POST/PUT/PATCH/DELETE
+    request_path: str | None = None
+    request_headers: dict[str, str] | None = None
+    request_body_template: str | None = None
+
+    # 可选：自定义响应提取路径（点分隔）
+    response_extract: str | None = None
+
+    model_config = ConfigDict(frozen=True)
+
+
+# ======================================
 # 全局配置根模型
 # ======================================
 class GlobalAIConfig(BaseModel):
-    """
-    AI层全局配置，内核启动时一次性注入，运行时完全冻结
+    """AI层全局配置，内核启动时一次性注入，运行时完全冻结
     是AI层所有配置的唯一来源，绝对不读取本地文件
     """
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
     persona: PersonaConfig
     inference: InferenceConfig
+    llm: LLMConfig | None = None
