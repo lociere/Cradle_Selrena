@@ -9,15 +9,12 @@ import {
   IPCMessageType,
   IPCRequest,
   IPCResponse,
-  ChatMessageRequest,
   ChatMessageResponse,
+  LifeHeartbeatRequest,
   LifeHeartbeatResponse,
-  TTSSynthesizeRequest,
-  TTSSynthesizeResponse,
-  ASRRecognizeRequest,
-  ASRRecognizeResponse,
   AgentPlanRequest,
   AgentPlanResponse,
+  PerceptionMessageRequest,
   createIPCRequest,
   createTraceContext,
   CoreException,
@@ -336,14 +333,14 @@ export class PythonAIManager {
     };
   }
 
-  public async sendChatMessage(request: ChatMessageRequest): Promise<ChatMessageResponse> {
+  public async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
     if (!this._isReady) {
       throw new CoreException("Python AI层未就绪", ErrorCode.INFERENCE_ERROR);
     }
 
     const traceContext = createTraceContext();
     const ipcRequest = createIPCRequest(
-      IPCMessageType.CHAT_MESSAGE,
+      IPCMessageType.PERCEPTION_MESSAGE,
       traceContext.trace_id,
       request
     );
@@ -384,7 +381,7 @@ export class PythonAIManager {
     return response.data as AgentPlanResponse;
   }
 
-  public async sendLifeHeartbeat(): Promise<LifeHeartbeatResponse> {
+  public async sendLifeHeartbeat(request: LifeHeartbeatRequest): Promise<LifeHeartbeatResponse> {
     if (!this._isReady) {
       throw new CoreException("Python AI层未就绪", ErrorCode.INFERENCE_ERROR);
     }
@@ -392,7 +389,8 @@ export class PythonAIManager {
     const traceContext = createTraceContext();
     const ipcRequest = createIPCRequest(
       IPCMessageType.LIFE_HEARTBEAT,
-      traceContext.trace_id
+      traceContext.trace_id,
+      request
     );
 
     const response = await this.sendRequest(ipcRequest);
@@ -402,54 +400,6 @@ export class PythonAIManager {
     }
 
     return response.data as LifeHeartbeatResponse;
-  }
-
-  public async sendTTSSynthesize(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse> {
-    if (!this._isReady) {
-      throw new CoreException("Python AI层未就绪", ErrorCode.INFERENCE_ERROR);
-    }
-
-    const traceContext = createTraceContext();
-    const ipcRequest = createIPCRequest(
-      IPCMessageType.TTS_SYNTHESIZE,
-      traceContext.trace_id,
-      request
-    );
-
-    const response = await this.sendRequest(ipcRequest);
-    if (!response.success) {
-      throw new CoreException(
-        `TTS调用失败: ${response.error?.message}`,
-        response.error?.code as ErrorCode || ErrorCode.INFERENCE_ERROR,
-        traceContext.trace_id
-      );
-    }
-
-    return response.data as TTSSynthesizeResponse;
-  }
-
-  public async sendASRRecognize(request: ASRRecognizeRequest): Promise<ASRRecognizeResponse> {
-    if (!this._isReady) {
-      throw new CoreException("Python AI层未就绪", ErrorCode.INFERENCE_ERROR);
-    }
-
-    const traceContext = createTraceContext();
-    const ipcRequest = createIPCRequest(
-      IPCMessageType.ASR_RECOGNIZE,
-      traceContext.trace_id,
-      request
-    );
-
-    const response = await this.sendRequest(ipcRequest);
-    if (!response.success) {
-      throw new CoreException(
-        `ASR调用失败: ${response.error?.message}`,
-        response.error?.code as ErrorCode || ErrorCode.INFERENCE_ERROR,
-        traceContext.trace_id
-      );
-    }
-
-    return response.data as ASRRecognizeResponse;
   }
 
   public async restart(): Promise<void> {

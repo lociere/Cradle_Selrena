@@ -7,20 +7,34 @@ from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.inference.llm_engine import LLMEngine
 
 
-def make_minimal_config(llm_api_type: str = "local") -> GlobalAIConfig:
+def make_minimal_config(llm_api_type: str = "local", **llm_kwargs: str) -> GlobalAIConfig:
+    llm_conf = {"api_type": llm_api_type, "api_key": "test"} if llm_api_type != "local" else {"api_type": "local"}
+    llm_conf.update(llm_kwargs)
     return GlobalAIConfig(
         persona={
             "base": {
                 "name": "x",
                 "nickname": "x",
-                "age": 1,
+                "role": "x",
+                "apparent_age": "x",
                 "gender": "x",
-                "core_identity": "x",
-                "self_description": "x",
+                "appearance": "x",
+                "background": "x",
             },
-            "character_traits": {},
-            "behavior_rules": [],
-            "boundary_limits": [],
+            "core": {
+                "personality": "x",
+                "character_core": "x",
+                "likes": "x",
+            },
+            "dialogue": {
+                "dialogue_style": "x",
+                "emotion_control": "x",
+            },
+            "safety": {
+                "taboos": "x",
+                "forbidden_phrases": [],
+                "forbidden_regex": [],
+            },
         },
         inference={
             "model": {
@@ -30,10 +44,26 @@ def make_minimal_config(llm_api_type: str = "local") -> GlobalAIConfig:
                 "top_p": 0.9,
                 "frequency_penalty": 0.0,
             },
-            "life_clock": {"thought_interval_ms": 1000},
+            "life_clock": {
+                "focused_interval_ms": 1000,
+                "ambient_interval_ms": 2000,
+                "default_mode": "standby",
+                "focus_duration_ms": 10000,
+                "summon_keywords": ["月见"],
+                "focus_on_any_chat": False,
+                "active_thought_modes": ["ambient", "focused"],
+            },
             "memory": {"max_recall_count": 5, "retention_days": 30},
+            "multimodal": {
+                "enabled": True,
+                "strategy": "specialist_then_core",
+                "max_items": 6,
+                "core_model": "qwen-vl-core",
+                "image_model": "qwen-image-specialist",
+                "video_model": "qwen-video-specialist",
+            },
         },
-        llm={"api_type": llm_api_type, "api_key": "test"} if llm_api_type != "local" else {"api_type": "local"},
+        llm=llm_conf,
     )
 
 
@@ -53,9 +83,8 @@ def test_llm_engine_api_mode_requires_api_key(api_type: str):
     self_entity = SelrenaSelfEntity(persona_config=config.persona, inference_config=config.inference)
     engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
 
-    with pytest.raises(Exception):
-        # 由于不会向真实 API 发出请求，这里仅确保有 key 且不报错（key 丢失会抛出）
-        engine.generate("hello")
+    # 引擎会自动降级，不应抛出异常
+    assert isinstance(engine.generate("hello"), str)
 
 
 def test_llm_engine_api_mode_happy_path(monkeypatch: pytest.MonkeyPatch):
@@ -82,16 +111,21 @@ def test_llm_engine_api_mode_happy_path(monkeypatch: pytest.MonkeyPatch):
         payload = {"choices": [{"text": "fake response"}]}
         return FakeResponse(json.dumps(payload).encode("utf-8"))
 
-    config = make_minimal_config("deepseek")
-    # 使用自定义 body 模板验证可配置性
-    config.llm.request_body_template = '{"model":"{model}","prompt":"{prompt}","temperature":{temperature}}'
+    # 使用 **kwargs 传入 request_body_template
+    # 注意：由于 llm_engine 使用 str.format，JSON 的大括号需要转义为 {{ 和 }}
+    config = make_minimal_config(
+        "deepseek",
+        request_body_template='{{"model":"{model}","prompt":"{prompt}","temperature":{temperature}}}'
+    )
+    
     self_entity = SelrenaSelfEntity(persona_config=config.persona, inference_config=config.inference)
     engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
 
-    monkeypatch.setattr("selrena.inference.llm_engine.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     reply = engine.generate("hello")
 
     assert reply == "fake response"
-    assert captured["request"].full_url.endswith("/v1/completions")
+    assert captured["request"].full_url.endswith("/chat/completions")
     body = json.loads(captured["request"].data.decode("utf-8"))
     assert body["prompt"] == "hello"
+

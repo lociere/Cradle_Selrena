@@ -138,7 +138,23 @@ class TerminalAdapterPlugin {
 
   async sendAndPrint(text) {
     try {
-      const response = await this.kernelProxy.sendChatMessage(text, this.sceneId, 10);
+      const response = await this.kernelProxy.sendPerceptionMessage({
+        input: {
+          items: [
+            {
+              modality: "text",
+              text,
+            },
+          ],
+        },
+        scene_id: this.sceneId,
+        familiarity: 10,
+        source: {
+          vessel_id: "terminal-adapter",
+          source_type: "terminal",
+          source_id: this.sceneId,
+        },
+      });
       const reply = response && (response.reply_content || response.content || "");
       this.printMessage("月见", reply || "...", false);
       this.kernelProxy.log("info", "终端对话完成", { input: text, has_reply: Boolean(reply) });

@@ -1,11 +1,42 @@
 // plugin standard interface
 
-import { ChatMessageResponse } from "../ipc/ipc-types";
+import {
+  ASRRecognizeRequest,
+  ASRRecognizeResponse,
+  ChatMessageResponse,
+  PerceptionMessageRequest,
+  TTSSynthesizeRequest,
+  TTSSynthesizeResponse,
+} from "../ipc/ipc-types";
 import { LongTermMemoryFragment, EmotionState } from "../types";
+
+export type PluginLogLevel = "debug" | "info" | "warn" | "error" | "critical";
+
+export type PluginTranscriptSceneScope = "group_scene" | "private_session" | "custom";
+
+export interface PluginSceneTranscriptEntry {
+  rootDir?: string;
+  sceneScope: PluginTranscriptSceneScope;
+  sceneType: "group" | "private" | "channel" | "custom";
+  sceneId: string;
+  identityScope?: string;
+  ownerId?: string;
+  ownerLabel?: string;
+  summary?: string;
+  role: "user" | "assistant" | "system";
+  speaker: string;
+  content: string;
+  tags?: string[];
+  occurredAt?: string;
+}
 
 export interface IKernelProxy {
   log(level: string, message: string, meta?: Record<string, unknown>): void;
-  sendChatMessage(userInput: string, sceneId: string, familiarity?: number): Promise<ChatMessageResponse>;
+  logState(level: PluginLogLevel, stateKey: string, snapshot: unknown, message: string, meta?: Record<string, unknown>): void;
+  sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse>;
+  synthesizeSpeech(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse>;
+  recognizeSpeech(request: ASRRecognizeRequest): Promise<ASRRecognizeResponse>;
+  appendSceneTranscript(entry: PluginSceneTranscriptEntry): Promise<void>;
   getRelevantMemories(query: string, limit?: number): Promise<LongTermMemoryFragment[]>;
   addMemory(memory: Omit<LongTermMemoryFragment, "memory_id" | "timestamp">): Promise<void>;
   deleteMemory(memoryId: string): Promise<void>;

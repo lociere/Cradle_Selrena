@@ -1,0 +1,54 @@
+enabled: true
+
+transport:
+  host: 127.0.0.1
+  port: 6200
+  path: /
+  access_token: "0927elise"
+  access_token_env: NAPCAT_ACCESS_TOKEN
+  token_from_secrets: true
+
+main_user:
+  qq: ""
+
+ingress:
+  ignore_self: true
+  private_enabled: true
+  group_enabled: true
+  group_policy: mention_or_wake
+  wake_words:
+    - 月见
+    - Selrena
+    - selrena
+  strip_self_mention: true
+  strip_leading_wake_words: true
+  blocked_user_ids: []
+  blocked_group_ids: []
+  familiarity:
+    private: 10
+    group: 6
+  multimodal:
+    enabled: true
+
+reply:
+  enabled: true
+  mention_sender_in_group: false
+  quote_source_message: false
+  auto_escape: false
+
+speech:
+  asr_for_record_enabled: true
+  asr_fallback_text: ""
+  tts_reply_enabled: false
+  tts_reply_in_group: false
+  tts_reply_in_private: false
+  tts_output_dir: runtime/tts
+
+memory:
+  enabled: true
+  root_dir: data/memory/adapters/napcat
+  max_scene_records: 80
+
+runtime:
+  action_timeout_ms: 15000
+  nickname_cache_ttl_ms: 300000

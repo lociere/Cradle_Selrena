@@ -7,15 +7,12 @@
 2. 把内核传入的原始消息，转换为应用层能处理的标准化输入
 3. 不做任何流程编排，仅做路由转发
 """
-import asyncio
 from selrena.ports.inbound.perception_port import PerceptionPort
 from selrena.application.chat_use_case import ChatUseCase, ChatInput, ChatOutput
 from selrena.application.active_thought_use_case import ActiveThoughtUseCase, ActiveThoughtInput, ActiveThoughtOutput
 from selrena.application.agent_plan_use_case import AgentPlanUseCase, AgentPlanInput, AgentPlanOutput
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.core.observability.logger import get_logger
-from selrena.inference.tts_engine_cpp import TTSEngineCPP
-from selrena.inference.asr_engine_cpp import ASREngineCPP
 
 # 初始化模块日志器
 logger = get_logger("inbound_adapter")
@@ -38,9 +35,18 @@ class KernelEventInboundAdapter(PerceptionPort):
         self.chat_use_case = chat_use_case
         self.active_thought_use_case = active_thought_use_case
         self.agent_plan_use_case = agent_plan_use_case
-        self.tts_engine = TTSEngineCPP()
-        self.asr_engine = ASREngineCPP()
         logger.info("内核入站适配器初始化完成")
+
+    async def on_perception_message(self, message: dict) -> ChatOutput:
+        """接收通用感知消息并转换为对话输入。"""
+        payload = message.get("payload", {})
+        input_data = ChatInput(
+            model_input=payload.get("input", {"items": []}),
+            scene_id=payload.get("scene_id", "default"),
+            familiarity=payload.get("familiarity", 0),
+            trace_id=message.get("trace_id", ""),
+        )
+        return await self.on_chat_message(input_data)
 
     async def on_chat_message(self, input_data: ChatInput) -> ChatOutput:
         """接收内核的对话消息，调用对话用例"""
@@ -72,24 +78,6 @@ class KernelEventInboundAdapter(PerceptionPort):
             general_count=len(general_knowledge)
         )
         self.self_entity.knowledge_base.init_from_kernel(persona_knowledge, general_knowledge)
-
-    async def on_tts_synthesize(self, text: str, output_path: str) -> dict:
-        """接收内核TTS请求，调用原生推理层"""
-        if not text or not output_path:
-            return {"status": "error", "message": "Missing text or output_path"}
-
-        loop = asyncio.get_running_loop()
-        success = await loop.run_in_executor(None, self.tts_engine.synthesize, text, output_path)
-        return {"status": "success" if success else "failed", "output_path": output_path}
-
-    async def on_asr_recognize(self, audio_path: str) -> dict:
-        """接收内核ASR请求，调用原生推理层"""
-        if not audio_path:
-            return {"status": "error", "message": "Missing audio_path"}
-
-        loop = asyncio.get_running_loop()
-        text = await loop.run_in_executor(None, self.asr_engine.recognize, audio_path)
-        return {"status": "success", "text": text}
 
     async def on_agent_plan(self, input_data: AgentPlanInput) -> AgentPlanOutput:
         """接收内核的 Agent 规划请求，仅返回思考建议。"""

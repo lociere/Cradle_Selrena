@@ -21,6 +21,16 @@ class PerceptionPort(ABC):
     """
 
     @abstractmethod
+    async def on_perception_message(self, message: dict) -> ChatOutput:
+        """
+        接收通用感知消息（第三方平台统一入口）
+        参数：
+            message: 标准化感知消息字典
+        返回：标准化对话输出
+        """
+        pass
+
+    @abstractmethod
     async def on_chat_message(self, input_data: ChatInput) -> ChatOutput:
         """
         接收对话消息
@@ -56,27 +66,6 @@ class PerceptionPort(ABC):
         参数：
             persona_knowledge: 人设知识库内容
             general_knowledge: 通用知识库内容
-        """
-        pass
-
-    @abstractmethod
-    async def on_tts_synthesize(self, text: str, output_path: str) -> dict:
-        """
-        接收内核的TTS请求
-        参数：
-            text: 待合成文本
-            output_path: 输出音频路径
-        返回：标准化响应
-        """
-        pass
-
-    @abstractmethod
-    async def on_asr_recognize(self, audio_path: str) -> dict:
-        """
-        接收内核的ASR请求
-        参数：
-            audio_path: 待识别音频路径
-        返回：标准化响应
         """
         pass
 

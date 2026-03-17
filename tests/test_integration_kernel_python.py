@@ -37,14 +37,26 @@ def test_kernel_to_python_integration_end_to_end():
             "base": {
                 "name": "x",
                 "nickname": "x",
-                "age": 1,
+                "role": "x",
+                "apparent_age": "x",
                 "gender": "x",
-                "core_identity": "x",
-                "self_description": "x",
+                "appearance": "x",
+                "background": "x",
             },
-            "character_traits": {},
-            "behavior_rules": [],
-            "boundary_limits": [],
+            "core": {
+                "personality": "x",
+                "character_core": "x",
+                "likes": "x",
+            },
+            "dialogue": {
+                "dialogue_style": "x",
+                "emotion_control": "x",
+            },
+            "safety": {
+                "taboos": "x",
+                "forbidden_phrases": [],
+                "forbidden_regex": [],
+            },
         },
         "inference": {
             "model": {
@@ -54,8 +66,24 @@ def test_kernel_to_python_integration_end_to_end():
                 "top_p": 0.9,
                 "frequency_penalty": 0.0,
             },
-            "life_clock": {"thought_interval_ms": 1000},
+            "life_clock": {
+                "focused_interval_ms": 1000,
+                "ambient_interval_ms": 2000,
+                "default_mode": "standby",
+                "focus_duration_ms": 10000,
+                "summon_keywords": ["月见"],
+                "focus_on_any_chat": False,
+                "active_thought_modes": ["ambient", "focused"],
+            },
             "memory": {"max_recall_count": 5, "retention_days": 30},
+                "multimodal": {
+                    "enabled": True,
+                    "strategy": "specialist_then_core",
+                    "max_items": 6,
+                    "core_model": "qwen-vl-core",
+                    "image_model": "qwen-image-specialist",
+                    "video_model": "qwen-video-specialist",
+                },
         },
         "llm": {"api_type": "local"},
     }
@@ -107,14 +135,25 @@ def test_kernel_to_python_integration_end_to_end():
                     await asyncio.sleep(0.1)
             assert client_id is not None, "未收到 python AI 的 state_sync 消息"
 
-            # 4) 发送 Chat 请求到 python
+            # 4) 发送通用感知请求到 python
             trace_id = str(uuid.uuid4())
             request = {
-                "type": "chat_message",
+                "type": "perception_message",
                 "trace_id": trace_id,
-                "user_input": "你好",
-                "scene_id": "test",
-                "familiarity": 0,
+                "payload": {
+                    "input": {
+                        "items": [
+                            {"modality": "text", "text": "你好"}
+                        ]
+                    },
+                    "scene_id": "test",
+                    "familiarity": 0,
+                    "source": {
+                        "vessel_id": "test-adapter",
+                        "source_type": "terminal",
+                        "source_id": "test",
+                    },
+                },
             }
             await router.send_multipart([client_id, json.dumps(request).encode("utf-8")])
 
@@ -165,7 +204,7 @@ def test_kernel_to_python_integration_end_to_end():
 
 
 def test_kernel_and_python_integration_end_to_end():
-    """完整集成测试：启动 TS 内核（含 Python AI），通过内核的 IPC 发送 chat_message 并收回回复"""
+    """完整集成测试：启动 TS 内核（含 Python AI），通过内核的 IPC 发送 perception_message 并收回回复"""
     import shutil
     import tempfile
 
@@ -185,10 +224,10 @@ def test_kernel_and_python_integration_end_to_end():
 
         os.makedirs(os.path.join(configs_dir, "python-ai"), exist_ok=True)
         open(os.path.join(configs_dir, "python-ai", "inference.yaml"), "w", encoding="utf-8").write(
-            "inference:\n  model:\n    local_model_path: \"/tmp\"\n    max_tokens: 16\n    temperature: 0.7\n    top_p: 0.9\n    frequency_penalty: 0.0\n  life_clock:\n    thought_interval_ms: 1000\n  memory:\n    max_recall_count: 5\n    retention_days: 30\n    context_limit: 5\n"
+            "inference:\n  model:\n    local_model_path: \"/tmp\"\n    max_tokens: 16\n    temperature: 0.7\n    top_p: 0.9\n    frequency_penalty: 0.0\n  life_clock:\n    focused_interval_ms: 1000\n    ambient_interval_ms: 2000\n    default_mode: \"standby\"\n    focus_duration_ms: 10000\n    summon_keywords: [\"月见\"]\n    focus_on_any_chat: false\n    active_thought_modes: [\"ambient\", \"focused\"]\n  memory:\n    max_recall_count: 5\n    retention_days: 30\n    context_limit: 5\n  multimodal:\n    enabled: true\n    strategy: \"specialist_then_core\"\n    max_items: 6\n    core_model: \"qwen-vl-core\"\n    image_model: \"qwen-image-specialist\"\n    video_model: \"qwen-video-specialist\"\n"
         )
         open(os.path.join(configs_dir, "python-ai", "persona.yaml"), "w", encoding="utf-8").write(
-            "persona:\n  base:\n    name: \"x\"\n    nickname: \"x\"\n    age: 1\n    gender: \"x\"\n    core_identity: \"x\"\n    self_description: \"x\"\n  character_traits: {}\n  behavior_rules: []\n  boundary_limits: []\n"
+            "persona:\n  base:\n    name: \"x\"\n    nickname: \"x\"\n    role: \"x\"\n    apparent_age: \"x\"\n    gender: \"x\"\n    appearance: \"x\"\n    background: \"x\"\n  core:\n    personality: \"x\"\n    character_core: \"x\"\n    likes: \"x\"\n  dialogue:\n    dialogue_style: \"x\"\n    emotion_control: \"x\"\n  safety:\n    taboos: \"x\"\n    forbidden_phrases: []\n    forbidden_regex: []\n"
         )
         open(os.path.join(configs_dir, "python-ai", "llm.yaml"), "w", encoding="utf-8").write(
             "api_type: \"local\"\napi_key: \"\"\nbase_url: \"\"\nmodel: \"\"\ntemperature: 0.7\n"
@@ -239,19 +278,28 @@ def test_kernel_and_python_integration_end_to_end():
             # 让内核和 Python AI 启动起来
             time.sleep(10)
 
-            # 3) 通过内核 IPC 发送 chat_message 并等待回复
+            # 3) 通过内核 IPC 发送 perception_message 并等待回复
             ctx = zmq.Context()
             req = ctx.socket(zmq.REQ)
             req.connect(bind_addr)
 
             trace_id = str(uuid.uuid4())
             request = {
-                "type": "chat_message",
+                "type": "perception_message",
                 "trace_id": trace_id,
                 "payload": {
-                    "user_input": "hello",
+                    "input": {
+                        "items": [
+                            {"modality": "text", "text": "hello"}
+                        ]
+                    },
                     "scene_id": "test",
                     "familiarity": 0,
+                    "source": {
+                        "vessel_id": "test-adapter",
+                        "source_type": "terminal",
+                        "source_id": "test",
+                    },
                 },
             }
 

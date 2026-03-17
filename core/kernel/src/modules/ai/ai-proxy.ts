@@ -3,15 +3,12 @@
  * 上层模块仅依赖该门面，不感知 IPC/子进程通信细节。
  */
 import {
-  ASRRecognizeRequest,
-  ASRRecognizeResponse,
   AgentPlanRequest,
   AgentPlanResponse,
-  ChatMessageRequest,
   ChatMessageResponse,
+  LifeHeartbeatRequest,
   LifeHeartbeatResponse,
-  TTSSynthesizeRequest,
-  TTSSynthesizeResponse,
+  PerceptionMessageRequest,
 } from "@cradle-selrena/protocol";
 import { PythonAIManager } from "./python-manager";
 
@@ -31,23 +28,15 @@ export class AIProxy {
     return PythonAIManager.instance.isReady;
   }
 
-  public async sendChatMessage(request: ChatMessageRequest): Promise<ChatMessageResponse> {
-    return PythonAIManager.instance.sendChatMessage(request);
+  public async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
+    return PythonAIManager.instance.sendPerceptionMessage(request);
   }
 
   public async requestAgentPlan(request: AgentPlanRequest): Promise<AgentPlanResponse> {
     return PythonAIManager.instance.sendAgentPlan(request);
   }
 
-  public async sendLifeHeartbeat(): Promise<LifeHeartbeatResponse> {
-    return PythonAIManager.instance.sendLifeHeartbeat();
-  }
-
-  public async synthesizeSpeech(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse> {
-    return PythonAIManager.instance.sendTTSSynthesize(request);
-  }
-
-  public async recognizeSpeech(request: ASRRecognizeRequest): Promise<ASRRecognizeResponse> {
-    return PythonAIManager.instance.sendASRRecognize(request);
+  public async sendLifeHeartbeat(request: LifeHeartbeatRequest): Promise<LifeHeartbeatResponse> {
+    return PythonAIManager.instance.sendLifeHeartbeat(request);
   }
 }

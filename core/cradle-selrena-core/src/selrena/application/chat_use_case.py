@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .base_use_case import BaseUseCase
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.inference.llm_engine import LLMEngine
+from selrena.inference.multimodal_router import MultimodalRouter
 from selrena.core.exceptions import PersonaViolationException
 from selrena.core.observability.logger import get_logger
 
@@ -28,15 +29,14 @@ class ChatInput:
     对话用例输入，由TS内核传入的标准化参数
     【核心规范】：完全屏蔽平台/场景细节，AI层看不到任何场景信息
     """
-    # 用户输入的纯文本内容（多模态已被内核预处理为语义文本）
-    user_input: str
+    # 统一模型输入：文本/图片/视频均在 items 中表达
+    model_input: dict
     # 场景唯一ID（仅用于隔离短期记忆，AI层不处理场景规则）
     scene_id: str
     # 对话对象熟悉度 0-10（10=核心用户，0=陌生人，内核已计算完成）
     familiarity: int = 0
     # 全链路追踪ID
     trace_id: str = ""
-
 
 @dataclass
 class ChatOutput:
@@ -63,6 +63,8 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
     self_entity: SelrenaSelfEntity
     # 依赖注入：LLM推理引擎
     llm_engine: LLMEngine
+    # 依赖注入：多模态路由器
+    multimodal_router: MultimodalRouter
 
     async def _execute(self, input_data: ChatInput, trace_id: str) -> ChatOutput:
         """
@@ -77,9 +79,16 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
         )
 
         # ======================================
+        # 步骤0：统一输入路由（固定策略）
+        # ======================================
+        route_result = self.multimodal_router.route(input_data.model_input)
+        user_text = route_result.primary_text or "[多模态输入]"
+        multimodal_text = route_result.semantic_text
+
+        # ======================================
         # 步骤1：情绪更新（基于用户输入）
         # ======================================
-        self.self_entity.emotion_system.update_by_input(input_data.user_input)
+        self.self_entity.emotion_system.update_by_input(user_text)
         current_emotion = self.self_entity.emotion_system.get_state()
         logger.debug("情绪更新完成", trace_id=trace_id, emotion=current_emotion)
 
@@ -94,7 +103,7 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
         # 步骤3：检索相关长期记忆
         # ======================================
         relevant_memories = self.self_entity.long_term_memory.retrieve_relevant(
-            query=input_data.user_input,
+            query=user_text,
             limit=self.self_entity.inference_config.memory.max_recall_count
         )
         memory_text = "\n".join([f"记忆：{mem.content}" for mem in relevant_memories])
@@ -104,7 +113,7 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
         # 步骤4：检索相关通用知识库
         # ======================================
         relevant_knowledge = self.self_entity.knowledge_base.retrieve_general_knowledge(
-            query=input_data.user_input,
+            query=user_text,
             limit=3
         )
         knowledge_text = "\n".join([f"知识：{entry.content}" for entry in relevant_knowledge])
@@ -117,6 +126,14 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             emotion_state=current_emotion
         )
         logger.debug("人设prompt构建完成", trace_id=trace_id)
+
+        logger.debug(
+            "统一输入路由完成",
+            trace_id=trace_id,
+            strategy=route_result.strategy,
+            text_length=len(user_text),
+            semantic_length=len(multimodal_text)
+        )
 
         # ======================================
         # 步骤6：拼接完整prompt
@@ -133,8 +150,11 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
 ===== 对话上下文 =====
 {context_text}
 
+===== 多模态语义 =====
+{multimodal_text if multimodal_text else "无多模态输入"}
+
 ===== 用户对你说 =====
-{input_data.user_input}
+{user_text}
 
 请用符合你人设的语气回复：
 """
@@ -158,7 +178,7 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
         # 新增用户输入到短期记忆
         short_term_memory.add(
             role="user",
-            content=input_data.user_input,
+            content=user_text,
             importance=0.7 if input_data.familiarity >= 8 else 0.5
         )
         # 新增生成的回复到短期记忆

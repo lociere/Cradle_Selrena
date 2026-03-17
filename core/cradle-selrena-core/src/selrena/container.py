@@ -12,7 +12,8 @@ from typing import Final
 from selrena.core.config import GlobalAIConfig
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.inference.llm_engine import LLMEngine
-from selrena.application.chat_use_case import ChatUseCase, ChatInput
+from selrena.inference.multimodal_router import MultimodalRouter
+from selrena.application.chat_use_case import ChatUseCase
 from selrena.application.active_thought_use_case import ActiveThoughtUseCase, ActiveThoughtInput
 from selrena.application.agent_plan_use_case import AgentPlanUseCase, AgentPlanInput
 from selrena.application.memory_sync_use_case import MemorySyncUseCase
@@ -88,12 +89,16 @@ class DIContainer:
         llm_engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
         self._instances["llm_engine"] = llm_engine
 
+        multimodal_router = MultimodalRouter(inference_config=config.inference)
+        self._instances["multimodal_router"] = multimodal_router
+
         # ======================================
         # 4. 应用层用例实例
         # ======================================
         chat_use_case = ChatUseCase(
             self_entity=self_entity,
-            llm_engine=llm_engine
+            llm_engine=llm_engine,
+            multimodal_router=multimodal_router,
         )
         self._instances["chat_use_case"] = chat_use_case
 
@@ -136,17 +141,12 @@ class DIContainer:
         event_bus.subscribe(ShortTermMemorySyncEvent, memory_sync_use_case.on_short_term_memory_sync)
 
         # 注册内核消息处理器
-        kernel_bridge.register_handler("chat_message", lambda msg: inbound_adapter.on_chat_message(
-            # 兼容协议：优先读取 payload，若缺失则回退到顶层字段。
-            ChatInput(
-                user_input=msg.get("payload", {}).get("user_input", msg.get("user_input", "")),
-                scene_id=msg.get("payload", {}).get("scene_id", msg.get("scene_id", "default")),
-                familiarity=msg.get("payload", {}).get("familiarity", msg.get("familiarity", 0)),
-                trace_id=msg["trace_id"]
-            )
-        ))
+        kernel_bridge.register_handler("perception_message", lambda msg: inbound_adapter.on_perception_message(msg))
         kernel_bridge.register_handler("life_heartbeat", lambda msg: inbound_adapter.on_life_heartbeat(
-            ActiveThoughtInput(trace_id=msg["trace_id"])
+            ActiveThoughtInput(
+                trace_id=msg["trace_id"],
+                attention_mode=msg.get("payload", {}).get("attention_mode", "ambient")
+            )
         ))
         kernel_bridge.register_handler(
             "memory_init",
@@ -156,21 +156,6 @@ class DIContainer:
             msg.get("payload", {}).get("persona_knowledge", msg.get("persona_knowledge", [])),
             msg.get("payload", {}).get("general_knowledge", msg.get("general_knowledge", []))
         ))
-
-        # Native推理请求处理（通过既有入站适配器链路统一管理）
-        kernel_bridge.register_handler(
-            "tts_synthesize",
-            lambda msg: inbound_adapter.on_tts_synthesize(
-                msg.get("payload", {}).get("text", msg.get("text", "")),
-                msg.get("payload", {}).get("output_path", msg.get("output_path", ""))
-            )
-        )
-        kernel_bridge.register_handler(
-            "asr_recognize",
-            lambda msg: inbound_adapter.on_asr_recognize(
-                msg.get("payload", {}).get("audio_path", msg.get("audio_path", ""))
-            )
-        )
         kernel_bridge.register_handler("heartbeat", lambda _msg: self._handle_heartbeat())
 
         kernel_bridge.register_handler("agent_plan", lambda msg: inbound_adapter.on_agent_plan(

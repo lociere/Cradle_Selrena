@@ -28,9 +28,7 @@ const TRAFFIC_LOG_TYPES = new Set<IPCMessageType>([
   IPCMessageType.CONFIG_INIT,
   IPCMessageType.MEMORY_INIT,
   IPCMessageType.KNOWLEDGE_INIT,
-  IPCMessageType.CHAT_MESSAGE,
-  IPCMessageType.TTS_SYNTHESIZE,
-  IPCMessageType.ASR_RECOGNIZE,
+  IPCMessageType.PERCEPTION_MESSAGE,
 ]);
 
 /**

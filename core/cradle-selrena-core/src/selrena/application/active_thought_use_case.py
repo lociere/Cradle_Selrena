@@ -25,6 +25,8 @@ class ActiveThoughtInput:
     """主动思维用例输入，由内核生命时钟触发"""
     # 全链路追踪ID
     trace_id: str = ""
+    # 注意力模式：standby/ambient/focused
+    attention_mode: str = "ambient"
 
 
 @dataclass
@@ -66,9 +68,15 @@ class ActiveThoughtUseCase(BaseUseCase[ActiveThoughtInput, ActiveThoughtOutput])
         current_emotion = self.self_entity.emotion_system.get_state()
         logger.debug("情绪自然衰减完成", trace_id=trace_id, emotion=current_emotion)
 
-        # 检查是否开启主动思维模式
-        if not getattr(self.self_entity.inference_config.life_clock, "active_thought_enabled", False):
-            logger.debug("主动思维模式已关闭，跳过生成", trace_id=trace_id)
+        # 仅在配置允许的注意力模式下生成主动思维
+        active_modes = set(getattr(self.self_entity.inference_config.life_clock, "active_thought_modes", ["ambient", "focused"]))
+        if input_data.attention_mode not in active_modes:
+            logger.debug(
+                "当前注意力模式不生成主动思维，跳过",
+                trace_id=trace_id,
+                attention_mode=input_data.attention_mode,
+                active_modes=list(active_modes),
+            )
             return ActiveThoughtOutput(
                 thought_content="",
                 emotion_state=current_emotion,

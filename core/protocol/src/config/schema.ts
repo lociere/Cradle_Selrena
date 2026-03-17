@@ -7,18 +7,39 @@ import { z } from "zod";
 export const BasePersonaSchema = z.object({
   name: z.string(),
   nickname: z.string(),
-  age: z.number().int().min(0),
+  role: z.string(),
+  apparent_age: z.string(),
   gender: z.string(),
-  core_identity: z.string(),
-  self_description: z.string(),
+  appearance: z.string(),
+  background: z.string(),
 });
 export type BasePersona = z.infer<typeof BasePersonaSchema>;
 
+export const PersonaCoreSchema = z.object({
+  personality: z.string(),
+  character_core: z.string(),
+  likes: z.string(),
+});
+export type PersonaCore = z.infer<typeof PersonaCoreSchema>;
+
+export const DialoguePolicySchema = z.object({
+  dialogue_style: z.string(),
+  emotion_control: z.string(),
+});
+export type DialoguePolicy = z.infer<typeof DialoguePolicySchema>;
+
+export const SafetyPolicySchema = z.object({
+  taboos: z.string(),
+  forbidden_phrases: z.array(z.string()),
+  forbidden_regex: z.array(z.string()),
+});
+export type SafetyPolicy = z.infer<typeof SafetyPolicySchema>;
+
 export const PersonaConfigSchema = z.object({
   base: BasePersonaSchema,
-  character_traits: z.record(z.string(), z.number().int().min(0).max(10)),
-  behavior_rules: z.array(z.string()),
-  boundary_limits: z.array(z.string()),
+  core: PersonaCoreSchema,
+  dialogue: DialoguePolicySchema,
+  safety: SafetyPolicySchema,
 });
 export type PersonaConfig = z.infer<typeof PersonaConfigSchema>;
 
@@ -32,8 +53,13 @@ export const ModelConfigSchema = z.object({
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 
 export const LifeClockConfigSchema = z.object({
-  thought_interval_ms: z.number().int().min(1000),
-  sleep_interval_ms: z.number().int().min(1000),
+  focused_interval_ms: z.number().int().min(1000),
+  ambient_interval_ms: z.number().int().min(1000),
+  default_mode: z.enum(["standby", "ambient", "focused"]),
+  focus_duration_ms: z.number().int().min(1000),
+  summon_keywords: z.array(z.string()),
+  focus_on_any_chat: z.boolean(),
+  active_thought_modes: z.array(z.enum(["standby", "ambient", "focused"])),
 });
 export type LifeClockConfig = z.infer<typeof LifeClockConfigSchema>;
 
@@ -43,6 +69,16 @@ export const MemoryRulesConfigSchema = z.object({
   context_limit: z.number().int().min(1),
 });
 export type MemoryRulesConfig = z.infer<typeof MemoryRulesConfigSchema>;
+
+export const MultimodalConfigSchema = z.object({
+  enabled: z.boolean(),
+  strategy: z.enum(["core_direct", "specialist_then_core"]),
+  max_items: z.number().int().min(1),
+  core_model: z.string(),
+  image_model: z.string(),
+  video_model: z.string(),
+});
+export type MultimodalConfig = z.infer<typeof MultimodalConfigSchema>;
 
 export const IPCConfigSchema = z.object({
   bind_address: z.string(),
@@ -113,6 +149,7 @@ export const GlobalAIConfigSchema = z.object({
     model: ModelConfigSchema,
     life_clock: LifeClockConfigSchema,
     memory: MemoryRulesConfigSchema,
+    multimodal: MultimodalConfigSchema,
   }),
   llm: LLMConfigSchema.optional(),
 });

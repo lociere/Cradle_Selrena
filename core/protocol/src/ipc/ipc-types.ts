@@ -6,11 +6,9 @@ import { ErrorCode, TraceContext } from "../core";
 
 export enum IPCMessageType {
   // 内核发送到AI层的消息类型
-  CHAT_MESSAGE = "chat_message",
+  PERCEPTION_MESSAGE = "perception_message",
   AGENT_PLAN = "agent_plan",
   LIFE_HEARTBEAT = "life_heartbeat",
-  TTS_SYNTHESIZE = "tts_synthesize",
-  ASR_RECOGNIZE = "asr_recognize",
   MEMORY_SYNC = "memory_sync",
   SHORT_TERM_MEMORY_SYNC = "short_term_memory_sync",
   STATE_SYNC = "state_sync",
@@ -20,6 +18,19 @@ export enum IPCMessageType {
   // AI层发送到内核的响应/事件类型
   SUCCESS_RESPONSE = "success_response",
   ERROR_RESPONSE = "error_response",
+}
+
+/**
+ * IPC消息分类：用于日志、路由和扩展时保持语义清晰。
+ */
+export enum IPCMessageCategory {
+  PERCEPTION = "perception",
+  COGNITION = "cognition",
+  INFERENCE = "inference",
+  SYNC = "sync",
+  CONTROL = "control",
+  OBSERVABILITY = "observability",
+  RESPONSE = "response",
 }
 
 export interface IPCRequest {
@@ -71,10 +82,41 @@ export function createErrorResponse(
 }
 
 // 下面是常用的业务类型定义（可根据需要扩展）
-export interface ChatMessageRequest {
-  user_input: string;
+
+export type MessageSourceType = "private" | "group" | "channel" | "terminal" | "system" | "unknown";
+
+export type PerceptionModalityType = "text" | "image" | "video";
+
+/**
+ * 上游来源元数据：只保留跨平台通用字段，禁止平台私有协议字段进入AI层。
+ */
+export interface MessageSourceMeta {
+  vessel_id: string;
+  source_type: MessageSourceType;
+  source_id: string;
+}
+
+export interface PerceptionModalityItem {
+  modality: PerceptionModalityType;
+  text?: string;
+  uri?: string;
+  mime_type?: string;
+  description_hint?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ModelInputPayload {
+  items: PerceptionModalityItem[];
+}
+
+/**
+ * 通用感知消息：第三方平台接入统一走该类型。
+ */
+export interface PerceptionMessageRequest {
+  input: ModelInputPayload;
   scene_id: string;
   familiarity?: number;
+  source: MessageSourceMeta;
 }
 
 export interface ChatMessageResponse {
@@ -102,6 +144,10 @@ export interface AgentPlanResponse {
   trace_id: string;
 }
 
+export interface LifeHeartbeatRequest {
+  attention_mode: "standby" | "ambient" | "focused";
+}
+
 export interface LifeHeartbeatResponse {
   thought_content: string;
   emotion_state: Record<string, any>;
@@ -110,7 +156,7 @@ export interface LifeHeartbeatResponse {
 
 export interface TTSSynthesizeRequest {
   text: string;
-  output_path: string;
+  output_path?: string;
 }
 
 export interface TTSSynthesizeResponse {

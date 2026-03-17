@@ -10,10 +10,21 @@ inference:
     top_p: 0.9
     frequency_penalty: 0.0
   life_clock:
-    thought_interval_ms: 30000
-    sleep_interval_ms: 60000
-    active_thought_enabled: false
+    focused_interval_ms: 10000
+    ambient_interval_ms: 45000
+    default_mode: "standby"
+    focus_duration_ms: 180000
+    summon_keywords: ["月见", "selrena", "小月见"]
+    focus_on_any_chat: false
+    active_thought_modes: []
   memory:
     max_recall_count: 5
     retention_days: 30
     context_limit: 5
+  multimodal:
+    enabled: true
+    strategy: "specialist_then_core"
+    max_items: 6
+    core_model: "qwen-vl-core"
+    image_model: "qwen-image-specialist"
+    video_model: "qwen-video-specialist"

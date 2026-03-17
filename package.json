@@ -2,6 +2,10 @@
   "name": "cradle-selrena",
   "version": "0.1.0",
   "private": true,
+  "dependencies": {
+    "ws": "^8.18.3",
+    "yaml": "^2.8.1"
+  },
   "scripts": {
     "bootstrap": "pnpm install",
     "build": "pnpm -w run build:all",

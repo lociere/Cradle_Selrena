@@ -5,9 +5,15 @@
  */
 import {
   IKernelProxy,
+  PluginSceneTranscriptEntry,
   Permission,
   hasPermission,
+  ASRRecognizeRequest,
+  ASRRecognizeResponse,
   ChatMessageResponse,
+  PerceptionMessageRequest,
+  TTSSynthesizeRequest,
+  TTSSynthesizeResponse,
   LongTermMemoryFragment,
   EmotionState,
   PluginException,
@@ -18,7 +24,11 @@ import { MemoryRepository } from "../../infrastructure/persistence/repositories/
 import { ConfigManager } from "../../core/config/config-manager";
 import { EventBus } from "../../core/event-bus/event-bus";
 import { getLogger } from "../../core/observability/logger";
+import { PluginStateLogger } from "../../core/observability/plugin-state-logger";
 import { DBManager } from "../../infrastructure/persistence/db-manager";
+import { LifeClockManager } from "../../modules/life-clock/life-clock-manager";
+import { AudioService } from "../../modules/audio/audio-service";
+import { PluginSceneTranscriptService } from "./plugin-scene-transcript-service";
 
 const logger = getLogger("kernel-proxy");
 
@@ -68,20 +78,68 @@ export class KernelProxyImpl implements IKernelProxy {
     logger.info(message, payload);
   }
 
-  // ====================== 对话能力 ======================
-  async sendChatMessage(
-    userInput: string,
-    sceneId: string,
-    familiarity: number = 0
-  ): Promise<ChatMessageResponse> {
-    this.checkPermission(Permission.CHAT_SEND);
-    logger.debug("插件调用发送聊天消息", { plugin_id: this._pluginId, scene_id: sceneId });
+  logState(
+    level: "debug" | "info" | "warn" | "error" | "critical",
+    stateKey: string,
+    snapshot: unknown,
+    message: string,
+    meta: Record<string, unknown> = {}
+  ): void {
+    PluginStateLogger.instance.logIfChanged(this._pluginId, level, stateKey, snapshot, message, meta);
+  }
 
-    return AIProxy.instance.sendChatMessage({
-      user_input: userInput,
-      scene_id: sceneId,
-      familiarity: familiarity,
+  // ====================== 对话能力 ======================
+  async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
+    this.checkPermission(Permission.CHAT_SEND);
+    logger.debug("插件调用发送通用感知消息", {
+      plugin_id: this._pluginId,
+      scene_id: request.scene_id,
+      source: request.source,
     });
+
+    // 聊天输入会触发注意力状态机：从统一 model_input 中提取文本模态。
+    const plainText = this.extractTextFromInput(request);
+    LifeClockManager.instance.onUserMessage(plainText);
+
+    return AIProxy.instance.sendPerceptionMessage(request);
+  }
+
+  private extractTextFromInput(request: PerceptionMessageRequest): string {
+    const items = request.input?.items || [];
+    const chunks: string[] = [];
+    for (const item of items) {
+      if (item.modality !== "text") {
+        continue;
+      }
+      const text = (item.text || "").trim();
+      if (text) {
+        chunks.push(text);
+      }
+    }
+    return chunks.join(" ").trim();
+  }
+
+  async synthesizeSpeech(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse> {
+    this.checkPermission(Permission.NATIVE_AUDIO_TTS);
+    logger.debug("插件调用 TTS", {
+      plugin_id: this._pluginId,
+      output_path: request.output_path,
+    });
+    return AudioService.instance.synthesizeSpeech(request);
+  }
+
+  async recognizeSpeech(request: ASRRecognizeRequest): Promise<ASRRecognizeResponse> {
+    this.checkPermission(Permission.NATIVE_AUDIO_ASR);
+    logger.debug("插件调用 ASR", {
+      plugin_id: this._pluginId,
+      audio_path: request.audio_path,
+    });
+    return AudioService.instance.recognizeSpeech(request);
+  }
+
+  async appendSceneTranscript(entry: PluginSceneTranscriptEntry): Promise<void> {
+    this.checkPermission(Permission.MEMORY_WRITE);
+    await PluginSceneTranscriptService.instance.append(this._pluginId, entry);
   }
 
   // ====================== 记忆能力 ======================

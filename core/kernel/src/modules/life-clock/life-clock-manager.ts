@@ -9,6 +9,8 @@ import { getLogger } from "../../core/observability/logger";
 
 const logger = getLogger("life-clock-manager");
 
+export type AttentionMode = "standby" | "ambient" | "focused";
+
 /**
  * 生命时钟管理器
  * 单例模式
@@ -16,10 +18,17 @@ const logger = getLogger("life-clock-manager");
 export class LifeClockManager {
   private static _instance: LifeClockManager | null = null;
   private _timer: NodeJS.Timeout | null = null;
+  private _focusResetTimer: NodeJS.Timeout | null = null;
   private _isRunning: boolean = false;
-  private _isSleeping: boolean = false;
-  private _thoughtIntervalMs: number = 10000;
-  private _sleepIntervalMs: number = 60000;
+  private _mode: AttentionMode = "standby";
+  private _focusedIntervalMs: number = 10000;
+  private _ambientIntervalMs: number = 45000;
+  private _defaultMode: AttentionMode = "standby";
+  private _focusDurationMs: number = 180000;
+  private _focusOnAnyChat: boolean = false;
+  private _summonKeywords: string[] = [];
+  private _activeThoughtModes: Set<AttentionMode> = new Set(["ambient", "focused"]);
+  private _heartbeatEnabled: boolean = true;
 
   /**
    * 获取单例实例
@@ -38,12 +47,26 @@ export class LifeClockManager {
    */
   public async init(): Promise<void> {
     const config = ConfigManager.instance.getConfig();
-    this._thoughtIntervalMs = config.ai.inference.life_clock.thought_interval_ms;
-    this._sleepIntervalMs = config.ai.inference.life_clock.sleep_interval_ms;
+    const lifeClock = config.ai.inference.life_clock;
+    this._focusedIntervalMs = lifeClock.focused_interval_ms;
+    this._ambientIntervalMs = lifeClock.ambient_interval_ms;
+    this._defaultMode = lifeClock.default_mode;
+    this._mode = this._defaultMode;
+    this._focusDurationMs = lifeClock.focus_duration_ms;
+    this._focusOnAnyChat = lifeClock.focus_on_any_chat;
+    this._summonKeywords = lifeClock.summon_keywords;
+    this._activeThoughtModes = new Set(lifeClock.active_thought_modes);
+    this._heartbeatEnabled = this._activeThoughtModes.size > 0;
 
     logger.info("生命时钟管理器初始化完成", {
-      thought_interval_ms: this._thoughtIntervalMs,
-      sleep_interval_ms: this._sleepIntervalMs,
+      focused_interval_ms: this._focusedIntervalMs,
+      ambient_interval_ms: this._ambientIntervalMs,
+      default_mode: this._defaultMode,
+      focus_duration_ms: this._focusDurationMs,
+      focus_on_any_chat: this._focusOnAnyChat,
+      summon_keywords: this._summonKeywords,
+      active_thought_modes: Array.from(this._activeThoughtModes),
+      heartbeat_enabled: this._heartbeatEnabled,
     });
   }
 
@@ -58,7 +81,13 @@ export class LifeClockManager {
 
     logger.info("生命时钟启动");
     this._isRunning = true;
-    this._isSleeping = false;
+    this._mode = this._defaultMode;
+
+    if (!this._heartbeatEnabled) {
+      logger.info("主动思维未启用，生命时钟不启动心跳循环");
+      return;
+    }
+
     this.startHeartbeatLoop();
   }
 
@@ -68,7 +97,7 @@ export class LifeClockManager {
   private startHeartbeatLoop(): void {
     if (!this._isRunning) return;
 
-    const interval = this._isSleeping ? this._sleepIntervalMs : this._thoughtIntervalMs;
+    const interval = this._mode === "focused" ? this._focusedIntervalMs : this._ambientIntervalMs;
 
     this._timer = setTimeout(async () => {
       if (!this._isRunning) return;
@@ -80,8 +109,14 @@ export class LifeClockManager {
           return;
         }
 
+        // 仅在允许主动思维的模式下触发生命心跳
+        if (!this._activeThoughtModes.has(this._mode)) {
+          logger.debug("当前模式不触发主动思维，跳过心跳", { mode: this._mode });
+          return;
+        }
+
         // 发送生命心跳，触发主动思维
-        await AIProxy.instance.sendLifeHeartbeat();
+        await AIProxy.instance.sendLifeHeartbeat({ attention_mode: this._mode });
       } catch (error) {
         logger.error("生命心跳执行异常", { error: (error as Error).message });
       } finally {
@@ -92,23 +127,65 @@ export class LifeClockManager {
   }
 
   /**
-   * 进入休眠状态，降低心跳频率
+   * 消息触发注意力状态变化：支持“呼唤后聚焦”与“任意聊天聚焦”两种策略
    */
-  public sleep(): void {
-    if (this._isSleeping) return;
-    logger.info("生命时钟进入休眠状态");
-    this._isSleeping = true;
-    this.restartLoop();
+  public onUserMessage(content: string): void {
+    if (!this._isRunning || !this._heartbeatEnabled) return;
+    const normalized = (content || "").toLowerCase();
+
+    const summoned = this._summonKeywords.some((keyword) => {
+      const k = keyword.trim().toLowerCase();
+      return k.length > 0 && normalized.includes(k);
+    });
+
+    if (summoned || this._focusOnAnyChat) {
+      this.setMode("focused", summoned ? "summon" : "chat");
+      return;
+    }
+
+    // 在聚焦态下，非呼唤消息也会刷新聚焦倒计时，避免对话中途退回。
+    if (this._mode === "focused") {
+      this.scheduleFocusReset();
+    }
   }
 
   /**
-   * 唤醒，恢复正常心跳频率
+   * 手动切换注意力模式
    */
-  public wakeUp(): void {
-    if (!this._isSleeping) return;
-    logger.info("生命时钟已唤醒");
-    this._isSleeping = false;
+  public setMode(mode: AttentionMode, reason: string = "manual"): void {
+    if (this._mode === mode) {
+      if (mode === "focused") {
+        this.scheduleFocusReset();
+      }
+      return;
+    }
+
+    const prev = this._mode;
+    this._mode = mode;
+    logger.info("注意力模式切换", { from: prev, to: mode, reason });
+
+    if (mode === "focused") {
+      this.scheduleFocusReset();
+    } else {
+      this.clearFocusResetTimer();
+    }
+
     this.restartLoop();
+  }
+
+  private scheduleFocusReset(): void {
+    this.clearFocusResetTimer();
+    this._focusResetTimer = setTimeout(() => {
+      if (!this._isRunning || this._mode !== "focused") return;
+      this.setMode(this._defaultMode, "focus_timeout");
+    }, this._focusDurationMs);
+  }
+
+  private clearFocusResetTimer(): void {
+    if (this._focusResetTimer) {
+      clearTimeout(this._focusResetTimer);
+      this._focusResetTimer = null;
+    }
   }
 
   /**
@@ -127,10 +204,10 @@ export class LifeClockManager {
   /**
    * 获取当前时钟状态
    */
-  public get state(): { isRunning: boolean; isSleeping: boolean } {
+  public get state(): { isRunning: boolean; mode: AttentionMode } {
     return {
       isRunning: this._isRunning,
-      isSleeping: this._isSleeping,
+      mode: this._mode,
     };
   }
 
@@ -145,5 +222,6 @@ export class LifeClockManager {
       clearTimeout(this._timer);
       this._timer = null;
     }
+    this.clearFocusResetTimer();
   }
 }
