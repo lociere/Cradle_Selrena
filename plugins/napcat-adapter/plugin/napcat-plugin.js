@@ -6,6 +6,7 @@ const { normalizeOB11Frames } = require("../adapter/ob11-normalizer");
 const { SenderProfileResolver } = require("../adapter/profile-resolver");
 const {
   cleanInboundText,
+  cleanOutboundReply,
   shouldDispatchGroupMessage,
   buildPerceptionRequest,
 } = require("../adapter/perception-builder");
@@ -304,7 +305,8 @@ class NapcatAdapterPlugin {
     const cleanText = cleanInboundText(rawText || "", event, this.config, this.botSelfId);
     if (parsed.sourceType === "group" && !shouldDispatchGroupMessage(parsed, rawText || cleanText, this.config)) {
       this.kernelProxy.log("debug", "Napcat 群聊消息被策略过滤", {
-        scene_id: parsed.sceneId,
+        source_type: parsed.sourceType,
+        source_id: parsed.sourceId,
         sender_id: parsed.senderId,
         group_policy: this.config.ingress.group_policy,
         raw_text_preview: String(rawText || "").slice(0, 80),
@@ -314,8 +316,32 @@ class NapcatAdapterPlugin {
 
     const nickname = await this.profileResolver.resolve(event, parsed);
     const isMainUser = this.isMainUser(parsed.senderId);
+    const sessionPolicy = this.getSessionPolicyBySourceType(parsed.sourceType);
 
-    const request = buildPerceptionRequest(parsed, nickname, cleanText, this.config, isMainUser);
+    const scene = await this.kernelProxy.resolveScene({
+      source: {
+        vessel_id: "napcat-adapter",
+        source_type: parsed.sourceType,
+        source_id: parsed.sourceId,
+      },
+      routing: {
+        session_policy: sessionPolicy,
+        actor: {
+          actor_id: parsed.senderId,
+          actor_name: nickname,
+        },
+      },
+    });
+
+    const request = buildPerceptionRequest(
+      parsed,
+      scene.scene_id,
+      nickname,
+      cleanText,
+      this.config,
+      isMainUser,
+      scene.session_policy
+    );
     if (!request) {
       return null;
     }
@@ -354,13 +380,24 @@ class NapcatAdapterPlugin {
       traits: parsed.messageTraits,
     });
 
-    const response = await this.kernelProxy.sendPerceptionMessage(request);
+    const response = await this.kernelProxy.ingestPerceptionMessage(request);
+    if (!response || !response.reply_content) {
+      this.kernelProxy.log("debug", "Napcat 消息已并入注意力窗口，本次不直接回复", {
+        scene_id: request.scene_id,
+        sender_id: parsed.senderId,
+      });
+      return;
+    }
     if (!this.config.reply.enabled) {
       return;
     }
 
-    const replyContent = String((response && response.reply_content) || "").trim();
+    const rawReplyContent = String((response && response.reply_content) || "").trim();
+    const replyContent = cleanOutboundReply(rawReplyContent);
     if (!replyContent) {
+      this.kernelProxy.log("warn", "Napcat 回复在清洗情绪词后为空，跳过发送", {
+        scene_id: request.scene_id,
+      });
       return;
     }
 
@@ -386,7 +423,10 @@ class NapcatAdapterPlugin {
       isMainUser,
       role: "assistant",
       content: replyContent,
-      tags: [isMainUser ? "对主用户" : "对外部联系人"],
+      tags: [
+        isMainUser ? "对主用户" : "对外部联系人",
+        parsed.messageTraits && parsed.messageTraits.isReplyMessage ? "针对回复消息" : "普通回复",
+      ],
     });
   }
 
@@ -406,13 +446,13 @@ class NapcatAdapterPlugin {
 
   async appendTranscript({ parsed, nickname, isMainUser, role, content, tags }) {
     await this.kernelProxy.appendSceneTranscript({
-      rootDir: this.config.memory.root_dir,
-      sceneScope: parsed.sourceType === "group" ? "group_scene" : "private_session",
-      sceneType: parsed.sourceType,
-      sceneId: parsed.sourceId,
-      identityScope: isMainUser ? "master_user" : "external_users",
-      ownerId: parsed.senderId,
-      ownerLabel: parsed.sourceType === "group"
+      root_dir: this.config.memory.root_dir,
+      scene_scope: parsed.sourceType === "group" ? "group_scene" : "private_session",
+      scene_type: parsed.sourceType,
+      transcript_scene_id: parsed.sourceId,
+      identity_scope: isMainUser ? "master_user" : "external_users",
+      owner_id: parsed.senderId,
+      owner_label: parsed.sourceType === "group"
         ? `group:${parsed.sourceId}`
         : `${nickname}(${parsed.senderId})`,
       summary: parsed.sourceType === "group"
@@ -422,8 +462,17 @@ class NapcatAdapterPlugin {
       speaker: role === "assistant" ? "月见" : `${nickname}(${parsed.senderId})`,
       content,
       tags,
-      occurredAt: new Date().toISOString(),
+      occurred_at: new Date().toISOString(),
     });
+  }
+
+  getSessionPolicyBySourceType(sourceType) {
+    const partition = this.config.routing && this.config.routing.session_partition
+      ? this.config.routing.session_partition
+      : {};
+    const key = sourceType === "group" ? "group" : "private";
+    const configured = String(partition[key] || "by_source").trim();
+    return configured === "by_actor" ? "by_actor" : "by_source";
   }
 
   shouldSendVoiceReply(event) {

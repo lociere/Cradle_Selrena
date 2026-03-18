@@ -14,7 +14,8 @@ class TerminalAdapterPlugin {
     this.ready = false;
     this.isInteractiveTTY = false;
     this.promptText = "you> ";
-    this.sceneId = "master-terminal";
+    this.sourceId = "master-terminal";
+    this.sceneId = "";
   }
 
   renderPrompt() {
@@ -49,6 +50,14 @@ class TerminalAdapterPlugin {
     if (!this.kernelProxy) {
       throw new Error("Kernel proxy 未注入");
     }
+    const scene = await this.kernelProxy.resolveScene({
+      source: {
+        vessel_id: "terminal-adapter",
+        source_type: "terminal",
+        source_id: this.sourceId,
+      },
+    });
+    this.sceneId = scene.scene_id;
     this.kernelProxy.log("info", "终端适配器插件初始化完成", { scene_id: this.sceneId });
   }
 
@@ -138,7 +147,7 @@ class TerminalAdapterPlugin {
 
   async sendAndPrint(text) {
     try {
-      const response = await this.kernelProxy.sendPerceptionMessage({
+      const response = await this.kernelProxy.ingestPerceptionMessage({
         input: {
           items: [
             {
@@ -152,9 +161,15 @@ class TerminalAdapterPlugin {
         source: {
           vessel_id: "terminal-adapter",
           source_type: "terminal",
-          source_id: this.sceneId,
+          source_id: this.sourceId,
         },
       });
+      if (!response || !response.reply_content) {
+        this.kernelProxy.log("debug", "终端输入已并入注意力窗口，本次不触发直接回复", {
+          scene_id: this.sceneId,
+        });
+        return;
+      }
       const reply = response && (response.reply_content || response.content || "");
       this.printMessage("月见", reply || "...", false);
       this.kernelProxy.log("info", "终端对话完成", { input: text, has_reply: Boolean(reply) });

@@ -84,15 +84,25 @@ class InferenceConfig(BaseModel):
         ambient_interval_ms: int     # 环境模式下心跳间隔（毫秒）
         default_mode: str            # 默认注意力模式：standby/ambient/focused
         focus_duration_ms: int       # 聚焦模式自动回落时长（毫秒）
+        ingress_debounce_ms: int     # 感知输入合并窗口（毫秒）
+        ingress_focused_debounce_ms: int  # 聚焦态输入合并窗口（毫秒）
+        ingress_max_batch_messages: int   # 单次合并最大消息数
+        ingress_max_batch_items: int      # 单次合并最大多模态条目数
         summon_keywords: List[str]   # 呼唤关键词（命中后进入聚焦）
         focus_on_any_chat: bool      # 任意聊天是否进入聚焦
         active_thought_modes: List[str]  # 允许主动思维的模式集合
+        source_focus_policies: Dict[str, str] = {}  # 来源类型到注意力策略的映射
         model_config = ConfigDict(frozen=True)
 
     # 记忆配置
     class MemoryConfig(BaseModel):
         max_recall_count: int       # 最大记忆召回数量
         retention_days: int         # 记忆保留天数
+        context_limit: int          # 短期记忆摘要窗口
+        conversation_window: int    # 会话内直接保留的最近消息数
+        summary_trigger_count: int  # 超过该消息数后压缩旧历史
+        summary_keep_recent_count: int  # 压缩时保留未摘要化的最近消息数
+        summary_max_chars: int      # 会话摘要最大字符数
         model_config = ConfigDict(frozen=True)
 
     # 多模态推理编排配置
@@ -105,10 +115,21 @@ class InferenceConfig(BaseModel):
         video_model: str                             # 视频专有模型标识
         model_config = ConfigDict(frozen=True)
 
+    # 动作流配置（仅用于可视化通道，不影响文本回复链路）
+    class ActionStreamConfig(BaseModel):
+        enabled: bool
+        channel: str
+        chunk_interval_ms: int
+        max_chunks_per_stream: int
+        emit_thinking_chunks: bool
+        emit_emotion_on_complete: bool
+        model_config = ConfigDict(frozen=True)
+
     model: ModelConfig
     life_clock: LifeClockConfig
     memory: MemoryConfig
     multimodal: MultimodalConfig
+    action_stream: ActionStreamConfig
 
 
 # ======================================
@@ -116,6 +137,19 @@ class InferenceConfig(BaseModel):
 # ======================================
 class LLMConfig(BaseModel):
     """云端LLM或API调用参数配置（如 DeepSeek/OpenAI/Azure）"""
+
+    class ProviderConfig(BaseModel):
+        api_type: str = "openai"
+        api_key: str | None = None
+        base_url: str | None = None
+        model: str | None = None
+        temperature: float | None = None
+        request_method: str | None = None
+        request_path: str | None = None
+        request_headers: dict[str, str] | None = None
+        request_body_template: str | None = None
+        response_extract: str | None = None
+        model_config = ConfigDict(frozen=True)
 
     api_type: str  # deepseek / openai / azure / anthropic / local
     api_key: str | None = None
@@ -131,6 +165,9 @@ class LLMConfig(BaseModel):
 
     # 可选：自定义响应提取路径（点分隔）
     response_extract: str | None = None
+
+    # 可选：多 provider 配置（例如 deepseek/qwen）
+    providers: dict[str, ProviderConfig] | None = None
 
     model_config = ConfigDict(frozen=True)
 

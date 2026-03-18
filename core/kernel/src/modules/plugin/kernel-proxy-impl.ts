@@ -16,6 +16,8 @@ import {
   TTSSynthesizeResponse,
   LongTermMemoryFragment,
   EmotionState,
+  SceneRoutingRequest,
+  SceneRoutingResult,
   PluginException,
   ErrorCode,
 } from "@cradle-selrena/protocol";
@@ -26,9 +28,10 @@ import { EventBus } from "../../core/event-bus/event-bus";
 import { getLogger } from "../../core/observability/logger";
 import { PluginStateLogger } from "../../core/observability/plugin-state-logger";
 import { DBManager } from "../../infrastructure/persistence/db-manager";
-import { LifeClockManager } from "../../modules/life-clock/life-clock-manager";
 import { AudioService } from "../../modules/audio/audio-service";
 import { PluginSceneTranscriptService } from "./plugin-scene-transcript-service";
+import { AttentionSessionManager } from "../../modules/attention/attention-session-manager";
+import { SceneRoutingManager } from "../../modules/scene/scene-routing-manager";
 
 const logger = getLogger("kernel-proxy");
 
@@ -89,34 +92,28 @@ export class KernelProxyImpl implements IKernelProxy {
   }
 
   // ====================== 对话能力 ======================
-  async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
-    this.checkPermission(Permission.CHAT_SEND);
-    logger.debug("插件调用发送通用感知消息", {
-      plugin_id: this._pluginId,
-      scene_id: request.scene_id,
-      source: request.source,
-    });
-
-    // 聊天输入会触发注意力状态机：从统一 model_input 中提取文本模态。
-    const plainText = this.extractTextFromInput(request);
-    LifeClockManager.instance.onUserMessage(plainText);
-
-    return AIProxy.instance.sendPerceptionMessage(request);
+  async resolveScene(request: SceneRoutingRequest): Promise<SceneRoutingResult> {
+    return SceneRoutingManager.instance.resolve(request);
   }
 
-  private extractTextFromInput(request: PerceptionMessageRequest): string {
-    const items = request.input?.items || [];
-    const chunks: string[] = [];
-    for (const item of items) {
-      if (item.modality !== "text") {
-        continue;
-      }
-      const text = (item.text || "").trim();
-      if (text) {
-        chunks.push(text);
-      }
-    }
-    return chunks.join(" ").trim();
+  async ingestPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse | null> {
+    this.checkPermission(Permission.CHAT_SEND);
+    const resolvedScene = SceneRoutingManager.instance.resolve({
+      source: request.source,
+      routing: request.routing,
+    });
+
+    const normalizedRequest: PerceptionMessageRequest = {
+      ...request,
+      scene_id: resolvedScene.scene_id,
+    };
+
+    logger.debug("插件调用注意力感知入口", {
+      plugin_id: this._pluginId,
+      scene_id: normalizedRequest.scene_id,
+      source: normalizedRequest.source,
+    });
+    return AttentionSessionManager.instance.ingest(normalizedRequest);
   }
 
   async synthesizeSpeech(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse> {

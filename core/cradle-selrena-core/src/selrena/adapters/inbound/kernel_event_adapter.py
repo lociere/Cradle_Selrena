@@ -11,6 +11,7 @@ from selrena.ports.inbound.perception_port import PerceptionPort
 from selrena.application.chat_use_case import ChatUseCase, ChatInput, ChatOutput
 from selrena.application.active_thought_use_case import ActiveThoughtUseCase, ActiveThoughtInput, ActiveThoughtOutput
 from selrena.application.agent_plan_use_case import AgentPlanUseCase, AgentPlanInput, AgentPlanOutput
+from selrena.core.contracts.kernel_ingress_contracts import KnowledgeBaseInitPayloadModel, KernelLongTermMemoryRecord
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.core.observability.logger import get_logger
 
@@ -37,19 +38,8 @@ class KernelEventInboundAdapter(PerceptionPort):
         self.agent_plan_use_case = agent_plan_use_case
         logger.info("内核入站适配器初始化完成")
 
-    async def on_perception_message(self, message: dict) -> ChatOutput:
-        """接收通用感知消息并转换为对话输入。"""
-        payload = message.get("payload", {})
-        input_data = ChatInput(
-            model_input=payload.get("input", {"items": []}),
-            scene_id=payload.get("scene_id", "default"),
-            familiarity=payload.get("familiarity", 0),
-            trace_id=message.get("trace_id", ""),
-        )
-        return await self.on_chat_message(input_data)
-
-    async def on_chat_message(self, input_data: ChatInput) -> ChatOutput:
-        """接收内核的对话消息，调用对话用例"""
+    async def on_perception_message(self, input_data: ChatInput) -> ChatOutput:
+        """接收标准化感知输入并转发对话用例。"""
         logger.info(
             "收到内核对话消息",
             trace_id=input_data.trace_id,
@@ -65,19 +55,22 @@ class KernelEventInboundAdapter(PerceptionPort):
         )
         return await self.active_thought_use_case.execute(input_data, input_data.trace_id)
 
-    async def on_memory_init(self, memories: list[dict]) -> None:
+    async def on_memory_init(self, memories: list[KernelLongTermMemoryRecord]) -> None:
         """接收内核注入的历史长期记忆"""
         logger.info("收到内核历史记忆注入", memory_count=len(memories))
         self.self_entity.long_term_memory.init_from_kernel(memories)
 
-    async def on_knowledge_init(self, persona_knowledge: list[dict], general_knowledge: list[dict]) -> None:
+    async def on_knowledge_init(
+        self,
+        knowledge_base: KnowledgeBaseInitPayloadModel,
+    ) -> None:
         """接收内核注入的知识库"""
         logger.info(
             "收到内核知识库注入",
-            persona_count=len(persona_knowledge),
-            general_count=len(general_knowledge)
+            version=knowledge_base.version,
+            entry_count=len(knowledge_base.entries),
         )
-        self.self_entity.knowledge_base.init_from_kernel(persona_knowledge, general_knowledge)
+        self.self_entity.knowledge_base.init_from_kernel(knowledge_base)
 
     async def on_agent_plan(self, input_data: AgentPlanInput) -> AgentPlanOutput:
         """接收内核的 Agent 规划请求，仅返回思考建议。"""

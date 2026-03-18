@@ -44,6 +44,9 @@ function parseMessageSegments(event, botSelfId, config) {
   let hasVideo = false;
   let replyMessageId = "";
   let recordSource = "";
+  let repliedSenderId = "";
+  let repliedSenderNickname = "";
+  let repliedPreviewText = "";
 
   for (const segment of segments) {
     if (!segment || typeof segment !== "object") {
@@ -131,26 +134,61 @@ function parseMessageSegments(event, botSelfId, config) {
     }
   }
 
+  if (event.reply && typeof event.reply === "object") {
+    const replyData = event.reply;
+    const replySender = replyData.sender && typeof replyData.sender === "object" ? replyData.sender : {};
+    if (!replyMessageId) {
+      replyMessageId = String(replyData.message_id || "");
+    }
+    repliedSenderId = String(replyData.user_id || replySender.user_id || "");
+    repliedSenderNickname = String(replySender.card || replySender.nickname || "").trim();
+
+    if (Array.isArray(replyData.message)) {
+      const previewParts = [];
+      for (const segment of replyData.message) {
+        if (!segment || typeof segment !== "object") {
+          continue;
+        }
+        const segType = segment.type;
+        const segData = segment.data || {};
+        if (segType === "text") {
+          previewParts.push(String(segData.text || ""));
+          continue;
+        }
+        if (segType === "at") {
+          previewParts.push(`@${String(segData.qq || "")}`);
+        }
+      }
+      repliedPreviewText = previewParts.join("").trim().slice(0, 80);
+    } else if (typeof replyData.raw_message === "string") {
+      repliedPreviewText = String(replyData.raw_message).trim().slice(0, 80);
+    }
+  }
+
   const sourceType = event.message_type === "group" ? "group" : "private";
   const sourceId = sourceType === "group" ? String(event.group_id || "") : String(event.user_id || "");
   const senderId = String(event.user_id || "");
-  const sceneId = `napcat:${sourceType}:${sourceId}`;
   const displayText = String(event.raw_message || textParts.join("")).trim();
 
   return {
     sourceType,
     sourceId,
     senderId,
-    sceneId,
     displayText,
     text: textParts.join("").trim(),
     recordSource,
     mediaItems,
     replyMessageId,
+    replyContext: {
+      senderId: repliedSenderId,
+      senderNickname: repliedSenderNickname,
+      previewText: repliedPreviewText,
+    },
     hasMention,
     messageTraits: {
       isAtMessage: hasMention,
       isReplyMessage: hasReply,
+      isReplyToSelf: hasReply && repliedSenderId && String(repliedSenderId) === String(botSelfId || ""),
       hasFace,
       hasSticker,
       hasImage,

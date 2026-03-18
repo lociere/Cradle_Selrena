@@ -8,158 +8,168 @@
 3. 仅做知识的存储和检索，不碰业务逻辑
 4. 绝对不碰本地持久化，所有知识由内核启动时注入
 """
+from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
-from uuid import uuid4
-from datetime import datetime
-from typing import List, Dict
+from typing import Dict, Iterable, List
+
+from selrena.core.contracts.kernel_ingress_contracts import KnowledgeBaseInitPayloadModel
 from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
 logger = get_logger("knowledge_base")
 
+_TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]")
 
-# ======================================
-# 知识库类型枚举
-# ======================================
+
 class KnowledgeBaseType(StrEnum):
-    PERSONA = "persona"   # 人设固定知识库：月见的背景故事、设定、规则，终身固定，不可被记忆修改
-    GENERAL = "general"   # 通用知识库：通用知识、技能、常识，和个人记忆完全分离
+    """知识库域类型。"""
+
+    PERSONA = "persona"
+    GENERAL = "general"
 
 
-# ======================================
-# 知识条目实体
-# ======================================
+@dataclass
+class KnowledgeRetrievalPolicy:
+    """知识检索策略。"""
+
+    persona_top_k: int = 12
+    general_top_k: int = 4
+    min_score: float = 0.15
+    keyword_weight: float = 1.0
+    tag_weight: float = 0.7
+    priority_weight: float = 0.2
+
+
 @dataclass
 class KnowledgeEntry:
-    """知识条目，和记忆完全分离"""
-    # 知识内容
+    """知识条目实体。"""
+
+    entry_id: str
     content: str
-    # 知识库类型
     kb_type: KnowledgeBaseType
-    # 知识唯一ID
-    entry_id: str = field(default_factory=lambda: str(uuid4()))
-    # 创建时间
-    timestamp: datetime = field(default_factory=datetime.now)
-    # 知识标签，用于检索
     tags: List[str] = field(default_factory=list)
-    # 优先级，越高越优先注入prompt
     priority: int = 1
+    source: str = "manual"
+    updated_at: str = ""
+    enabled: bool = True
 
 
-# ======================================
-# 独立知识库管理器（全局单例）
-# ======================================
 class KnowledgeBase:
-    """
-    独立知识库管理器，全局单例
-    核心规则：和个人记忆完全物理隔离，绝对避免记忆污染人设/知识
-    真人逻辑对齐：对应人脑的常识库，和个人经历记忆完全分开
-    """
+    """独立知识库管理器，全局单例。"""
+
     _instance = None
 
     def __new__(cls):
-        """单例模式，保证整个进程只有一个知识库管理器"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._init()
         return cls._instance
 
     def _init(self) -> None:
-        """初始化，仅在单例创建时执行一次"""
-        # 知识库存储：key=知识库类型，value=知识条目字典
         self._kb: Dict[KnowledgeBaseType, Dict[str, KnowledgeEntry]] = {
             KnowledgeBaseType.PERSONA: {},
-            KnowledgeBaseType.GENERAL: {}
+            KnowledgeBaseType.GENERAL: {},
         }
+        self._policy = KnowledgeRetrievalPolicy()
         logger.info("独立知识库初始化完成")
 
-    def init_from_kernel(self, persona_knowledge: List[dict], general_knowledge: List[dict]) -> None:
-        """
-        内核启动时注入知识库，AI层绝对不读本地文件
-        参数：
-            persona_knowledge: 人设固定知识库内容
-            general_knowledge: 通用知识库内容
-        """
-        # 注入人设知识库
-        for entry in persona_knowledge:
-            self.add(KnowledgeEntry(
-                content=entry["content"],
-                kb_type=KnowledgeBaseType.PERSONA,
-                tags=entry.get("tags", []),
-                priority=entry.get("priority", 1)
-            ))
-        # 注入通用知识库
-        for entry in general_knowledge:
-            self.add(KnowledgeEntry(
-                content=entry["content"],
-                kb_type=KnowledgeBaseType.GENERAL,
-                tags=entry.get("tags", []),
-                priority=entry.get("priority", 1)
-            ))
+    def init_from_kernel(self, payload: KnowledgeBaseInitPayloadModel) -> None:
+        """用内核注入的完整知识载荷重建知识库。"""
+        self._kb[KnowledgeBaseType.PERSONA].clear()
+        self._kb[KnowledgeBaseType.GENERAL].clear()
+        self._policy = KnowledgeRetrievalPolicy(
+            persona_top_k=payload.retrieval.persona_top_k,
+            general_top_k=payload.retrieval.general_top_k,
+            min_score=payload.retrieval.min_score,
+            keyword_weight=payload.retrieval.keyword_weight,
+            tag_weight=payload.retrieval.tag_weight,
+            priority_weight=payload.retrieval.priority_weight,
+        )
+
+        for record in payload.entries:
+            if record.scope not in (KnowledgeBaseType.PERSONA.value, KnowledgeBaseType.GENERAL.value):
+                logger.warn("跳过非法知识 scope", entry_id=record.entry_id, scope=record.scope)
+                continue
+            if not record.enabled:
+                continue
+
+            self.add(
+                KnowledgeEntry(
+                    entry_id=record.entry_id,
+                    content=record.content,
+                    kb_type=KnowledgeBaseType(record.scope),
+                    tags=record.tags,
+                    priority=record.priority,
+                    source=record.source,
+                    updated_at=record.updated_at,
+                    enabled=record.enabled,
+                )
+            )
+
         logger.info(
             "知识库注入完成",
+            version=payload.version,
             persona_count=len(self._kb[KnowledgeBaseType.PERSONA]),
-            general_count=len(self._kb[KnowledgeBaseType.GENERAL])
+            general_count=len(self._kb[KnowledgeBaseType.GENERAL]),
         )
 
     def add(self, entry: KnowledgeEntry) -> None:
-        """
-        新增知识条目
-        参数：
-            entry: 知识条目
-        """
         self._kb[entry.kb_type][entry.entry_id] = entry
-        logger.debug(
-            "新增知识条目完成",
-            entry_id=entry.entry_id,
-            kb_type=entry.kb_type.value
-        )
 
-    def get_persona_knowledge(self) -> List[KnowledgeEntry]:
-        """
-        获取所有人设知识库内容，每次prompt必须注入
-        核心作用：固定人设，避免对话记忆污染人设
-        返回：按优先级倒序排序的人设知识条目列表
-        """
+    def get_persona_knowledge(self, limit: int | None = None) -> List[KnowledgeEntry]:
+        """获取人设知识，默认按策略限制数量。"""
+        resolved_limit = limit if limit is not None else self._policy.persona_top_k
         entries = list(self._kb[KnowledgeBaseType.PERSONA].values())
-        # 按优先级倒序排序
-        entries.sort(key=lambda x: x.priority, reverse=True)
-        return entries
+        entries.sort(key=lambda item: item.priority, reverse=True)
+        return entries[: max(1, resolved_limit)]
 
-    def retrieve_general_knowledge(self, query: str, limit: int = 3) -> List[KnowledgeEntry]:
-        """
-        检索和查询相关的通用知识库内容
-        参数：
-            query: 查询内容
-            limit: 返回的条目数量
-        返回：按相关度排序的知识条目列表
-        """
-        query_keywords = set(query.lower().split())
-        scored_entries = []
+    def retrieve_general_knowledge(self, query: str, limit: int | None = None) -> List[KnowledgeEntry]:
+        """按关键词/标签/优先级综合打分检索通用知识。"""
+        resolved_limit = limit if limit is not None else self._policy.general_top_k
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
+            return []
 
+        scored_entries: List[tuple[float, KnowledgeEntry]] = []
         for entry in self._kb[KnowledgeBaseType.GENERAL].values():
-            match_count = len(query_keywords & set(entry.content.lower().split()))
-            # 最终得分 = 匹配数 * 优先级
-            score = match_count * entry.priority
-            if score > 0:
+            score = self._score_entry(entry, query_tokens)
+            if score >= self._policy.min_score:
                 scored_entries.append((score, entry))
 
-        # 按得分倒序排序，返回topN
-        scored_entries.sort(key=lambda x: x[0], reverse=True)
-        result = [entry for score, entry in scored_entries[:limit]]
-        logger.debug(
-            "通用知识库检索完成",
-            query=query[:20],
-            result_count=len(result)
-        )
+        scored_entries.sort(key=lambda item: item[0], reverse=True)
+        return [entry for _, entry in scored_entries[: max(1, resolved_limit)]]
+
+    def get_all_entries(self, kb_type: KnowledgeBaseType | None = None) -> List[KnowledgeEntry]:
+        """获取全部知识条目。"""
+        if kb_type is not None:
+            return list(self._kb[kb_type].values())
+        result: List[KnowledgeEntry] = []
+        for knowledge_dict in self._kb.values():
+            result.extend(list(knowledge_dict.values()))
         return result
 
-    def get_all_entries(self, kb_type: KnowledgeBaseType = None) -> List[KnowledgeEntry]:
-        """获取所有知识条目，用于内核同步"""
-        if kb_type:
-            return list(self._kb[kb_type].values())
-        all_entries = []
-        for kb in self._kb.values():
-            all_entries.extend(list(kb.values()))
-        return all_entries
+    def _score_entry(self, entry: KnowledgeEntry, query_tokens: set[str]) -> float:
+        content_tokens = self._tokenize(entry.content)
+        if not content_tokens:
+            return 0.0
+
+        tag_tokens = {token for token in self._normalize_tokens(entry.tags)}
+        keyword_ratio = len(query_tokens & content_tokens) / len(query_tokens)
+        tag_ratio = len(query_tokens & tag_tokens) / len(query_tokens) if tag_tokens else 0.0
+        priority_ratio = min(max(entry.priority, 1), 100) / 100.0
+
+        return (
+            keyword_ratio * self._policy.keyword_weight
+            + tag_ratio * self._policy.tag_weight
+            + priority_ratio * self._policy.priority_weight
+        )
+
+    def _tokenize(self, text: str) -> set[str]:
+        return {token.lower() for token in _TOKEN_RE.findall(text or "")}
+
+    def _normalize_tokens(self, values: Iterable[str]) -> set[str]:
+        joined = " ".join(value for value in values if value)
+        return self._tokenize(joined)

@@ -14,10 +14,11 @@ from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.inference.llm_engine import LLMEngine
 from selrena.inference.multimodal_router import MultimodalRouter
 from selrena.application.chat_use_case import ChatUseCase
-from selrena.application.active_thought_use_case import ActiveThoughtUseCase, ActiveThoughtInput
-from selrena.application.agent_plan_use_case import AgentPlanUseCase, AgentPlanInput
+from selrena.application.active_thought_use_case import ActiveThoughtUseCase
+from selrena.application.agent_plan_use_case import AgentPlanUseCase
 from selrena.application.memory_sync_use_case import MemorySyncUseCase
 from selrena.adapters.outbound.kernel_bridge import KernelBridge
+from selrena.adapters.inbound.kernel_ingress_cortex import KernelIngressCortex
 from selrena.adapters.inbound.kernel_event_adapter import KernelEventInboundAdapter
 from selrena.adapters.outbound.kernel_event_adapter import KernelEventOutboundAdapter
 from selrena.core.event_bus import DomainEventBus
@@ -122,6 +123,9 @@ class DIContainer:
         )
         self._instances["inbound_adapter"] = inbound_adapter
 
+        ingress_cortex = KernelIngressCortex()
+        self._instances["ingress_cortex"] = ingress_cortex
+
         # 出站适配器
         outbound_adapter = KernelEventOutboundAdapter(
             kernel_bridge=kernel_bridge
@@ -141,30 +145,28 @@ class DIContainer:
         event_bus.subscribe(ShortTermMemorySyncEvent, memory_sync_use_case.on_short_term_memory_sync)
 
         # 注册内核消息处理器
-        kernel_bridge.register_handler("perception_message", lambda msg: inbound_adapter.on_perception_message(msg))
-        kernel_bridge.register_handler("life_heartbeat", lambda msg: inbound_adapter.on_life_heartbeat(
-            ActiveThoughtInput(
-                trace_id=msg["trace_id"],
-                attention_mode=msg.get("payload", {}).get("attention_mode", "ambient")
-            )
-        ))
+        kernel_bridge.register_handler(
+            "perception_message",
+            lambda msg: inbound_adapter.on_perception_message(ingress_cortex.parse_perception_message(msg)),
+        )
+        kernel_bridge.register_handler(
+            "life_heartbeat",
+            lambda msg: inbound_adapter.on_life_heartbeat(ingress_cortex.parse_life_heartbeat(msg)),
+        )
         kernel_bridge.register_handler(
             "memory_init",
-            lambda msg: inbound_adapter.on_memory_init(msg.get("payload", {}).get("memories", msg.get("memories", [])))
+            lambda msg: inbound_adapter.on_memory_init(ingress_cortex.parse_memory_init(msg)),
         )
-        kernel_bridge.register_handler("knowledge_init", lambda msg: inbound_adapter.on_knowledge_init(
-            msg.get("payload", {}).get("persona_knowledge", msg.get("persona_knowledge", [])),
-            msg.get("payload", {}).get("general_knowledge", msg.get("general_knowledge", []))
-        ))
+        kernel_bridge.register_handler(
+            "knowledge_init",
+            lambda msg: inbound_adapter.on_knowledge_init(ingress_cortex.parse_knowledge_init(msg)),
+        )
         kernel_bridge.register_handler("heartbeat", lambda _msg: self._handle_heartbeat())
 
-        kernel_bridge.register_handler("agent_plan", lambda msg: inbound_adapter.on_agent_plan(
-            AgentPlanInput(
-                user_goal=msg.get("payload", {}).get("user_goal", msg.get("user_goal", "")),
-                scene_id=msg.get("payload", {}).get("scene_id", msg.get("scene_id", "default")),
-                trace_id=msg["trace_id"],
-            )
-        ))
+        kernel_bridge.register_handler(
+            "agent_plan",
+            lambda msg: inbound_adapter.on_agent_plan(ingress_cortex.parse_agent_plan(msg)),
+        )
 
         # 配置初始化处理：内核会通过 config_init 请求注入配置（用于确认通信链路正常运行）
         kernel_bridge.register_handler("config_init", lambda msg: self._handle_config_init(msg))

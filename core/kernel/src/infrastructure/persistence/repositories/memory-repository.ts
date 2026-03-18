@@ -24,6 +24,13 @@ export interface ShortTermMemoryFragmentRecord {
   trace_id?: string;
 }
 
+export interface ShortTermSceneSnapshot {
+  scene_id: string;
+  total_records: number;
+  latest_timestamp: string | null;
+  recent_records: ShortTermMemoryFragmentRecord[];
+}
+
 /**
  * 记忆数据访问层
  * 单例模式
@@ -326,6 +333,54 @@ export class MemoryRepository {
     } catch (error) {
       logger.error("短期记忆同步写入失败", { error: (error as Error).message });
       throw new CoreException(`短期记忆同步写入失败: ${(error as Error).message}`, ErrorCode.PERSISTENCE_ERROR);
+    }
+  }
+
+  public getShortTermSceneSnapshot(sceneId: string, recentLimit: number = 50): ShortTermSceneSnapshot {
+    const db = DBManager.instance.getDB();
+    try {
+      const countRow = db.prepare(
+        `SELECT COUNT(1) AS total_records, MAX(timestamp) AS latest_timestamp FROM short_term_memory WHERE scene_id = ?`
+      ).get(sceneId) as { total_records: number; latest_timestamp: string | null };
+
+      const rows = db.prepare(
+        `SELECT memory_id, scene_id, role, content, importance, trace_id, timestamp
+         FROM short_term_memory
+         WHERE scene_id = ?
+         ORDER BY timestamp DESC
+         LIMIT ?`
+      ).all(sceneId, recentLimit) as Array<{
+        memory_id: string;
+        scene_id: string;
+        role: string;
+        content: string;
+        importance: number;
+        trace_id: string;
+        timestamp: string;
+      }>;
+
+      const recentRecords = rows.reverse().map((row) => ({
+        memory_id: row.memory_id,
+        scene_id: row.scene_id,
+        role: row.role,
+        content: row.content,
+        importance: row.importance,
+        trace_id: row.trace_id || undefined,
+        timestamp: row.timestamp,
+      }));
+
+      return {
+        scene_id: sceneId,
+        total_records: Number(countRow?.total_records || 0),
+        latest_timestamp: countRow?.latest_timestamp || null,
+        recent_records: recentRecords,
+      };
+    } catch (error) {
+      logger.error("获取短期记忆场景快照失败", {
+        scene_id: sceneId,
+        error: (error as Error).message,
+      });
+      throw new CoreException(`获取短期记忆场景快照失败: ${(error as Error).message}`, ErrorCode.PERSISTENCE_ERROR);
     }
   }
 }

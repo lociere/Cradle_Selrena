@@ -23,8 +23,10 @@ import { MemoryRepository } from "./infrastructure/persistence/repositories/memo
 import { IPCServer } from "./infrastructure/ipc/ipc-server";
 import { PythonAIManager } from "./modules/ai/python-manager";
 import { PluginManager } from "./modules/plugin/plugin-manager";
+import { ActionStreamManager } from "./modules/action-stream/action-stream-manager";
 import { LifeClockManager } from "./modules/life-clock/life-clock-manager";
 import { MemorySyncManager } from "./modules/memory/memory-sync-manager";
+import { AttentionSessionManager } from "./modules/attention/attention-session-manager";
 
 const logger = getLogger("app-root");
 
@@ -158,7 +160,31 @@ export class App {
       logger.info("插件管理器启动完成", { startup_time_ms: pluginStartupTime });
 
       // ======================================
-      // 步骤7：启动生命时钟
+      // 步骤7：初始化动作流管理器
+      // ======================================
+      ActionStreamManager.instance.init();
+      await EventBus.instance.publish(
+        new ModuleStartedEvent({
+          moduleName: "action-stream",
+          startupTimeMs: 0,
+        }, rootTraceContext)
+      );
+      logger.info("动作流管理器启动完成");
+
+      // ======================================
+      // 步骤8：初始化注意力会话管理器
+      // ======================================
+      AttentionSessionManager.instance.init();
+      await EventBus.instance.publish(
+        new ModuleStartedEvent({
+          moduleName: "attention-session",
+          startupTimeMs: 0,
+        }, rootTraceContext)
+      );
+      logger.info("注意力会话管理器启动完成");
+
+      // ======================================
+      // 步骤9：启动生命时钟
       // ======================================
       const clockStart = Date.now();
       await LifeClockManager.instance.init();
@@ -235,46 +261,60 @@ export class App {
       }, stopTraceContext));
       logger.info("生命时钟已停止");
 
-      // 2. 停止插件管理器
+      // 2. 停止注意力会话管理器
+      AttentionSessionManager.instance.stop();
+      await EventBus.instance.publish(new ModuleStoppedEvent({
+        moduleName: "attention-session",
+      }, stopTraceContext));
+      logger.info("注意力会话管理器已停止");
+
+      // 3. 停止动作流管理器
+      ActionStreamManager.instance.stop();
+      await EventBus.instance.publish(new ModuleStoppedEvent({
+        moduleName: "action-stream",
+      }, stopTraceContext));
+      logger.info("动作流管理器已停止");
+
+      // 4. 停止插件管理器
       await PluginManager.instance.shutdown();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "plugin-manager",
       }, stopTraceContext));
       logger.info("插件管理器已停止");
 
-      // 3. 停止Python AI层
+      // 5. 停止Python AI层
       await PythonAIManager.instance.stop();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "python-ai-core",
       }, stopTraceContext));
       logger.info("Python AI层已停止");
 
-      // 4. 停止记忆同步管理器
+      // 6. 停止记忆同步管理器
       await MemorySyncManager.instance.shutdown();
       logger.info("记忆同步管理器已停止");
 
-      // 5. 停止IPC服务端
+      // 7. 停止IPC服务端
       await IPCServer.instance.stop();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "ipc-server",
       }, stopTraceContext));
       logger.info("IPC服务端已停止");
 
-      // 6. 关闭数据库连接
+      // 8. 关闭数据库连接
       await DBManager.instance.close();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "persistence",
       }, stopTraceContext));
       logger.info("数据库已关闭");
 
-      // 7. 关闭事件总线
+      // 9. 关闭事件总线
       await EventBus.instance.shutdown();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "event-bus",
       }, stopTraceContext));
       logger.info("事件总线已关闭");
 
-      // 8. 关闭日志器
+      // 10. 关闭日志器
       await closeLogger();
 
       this._state = AppLifecycleState.STOPPED;

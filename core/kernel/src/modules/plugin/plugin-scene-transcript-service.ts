@@ -35,8 +35,8 @@ export class PluginSceneTranscriptService {
     logger.debug("插件场景转录已追加", {
       plugin_id: pluginId,
       file_path: target.filePath,
-      scene_scope: entry.sceneScope,
-      scene_id: entry.sceneId,
+      scene_scope: entry.scene_scope,
+      transcript_scene_id: entry.transcript_scene_id,
     });
   }
 
@@ -48,37 +48,37 @@ export class PluginSceneTranscriptService {
     summary: string;
   } {
     const repoRoot = resolveRepoRoot();
-    const rootDir = entry.rootDir && entry.rootDir.trim()
-      ? (path.isAbsolute(entry.rootDir) ? entry.rootDir : path.resolve(repoRoot, entry.rootDir))
+    const rootDir = entry.root_dir && entry.root_dir.trim()
+      ? (path.isAbsolute(entry.root_dir) ? entry.root_dir : path.resolve(repoRoot, entry.root_dir))
       : path.resolve(repoRoot, "data", "memory", "plugin-transcripts");
 
-    if (entry.sceneScope === "group_scene") {
+    if (entry.scene_scope === "group_scene") {
       return {
-        filePath: path.join(rootDir, "scenes", "group", `${String(entry.sceneId || "unknown")}.md`),
+        filePath: path.join(rootDir, "scenes", "group", `${String(entry.transcript_scene_id || "unknown")}.md`),
         scope: "group_scene",
-        sceneLabel: `group:${entry.sceneId}`,
-        ownerLabel: entry.ownerLabel || `group:${entry.sceneId}`,
+        sceneLabel: `group:${entry.transcript_scene_id}`,
+        ownerLabel: entry.owner_label || `group:${entry.transcript_scene_id}`,
         summary: entry.summary || "该文件记录一个群场景内的连续对话转录。",
       };
     }
 
-    if (entry.sceneScope === "private_session") {
-      const identityScope = String(entry.identityScope || "external_users");
-      const ownerId = String(entry.ownerId || entry.sceneId || "unknown");
+    if (entry.scene_scope === "private_session") {
+      const identityScope = String(entry.identity_scope || "external_users");
+      const ownerId = String(entry.owner_id || entry.transcript_scene_id || "unknown");
       return {
         filePath: path.join(rootDir, "users", identityScope, "private", `${ownerId}.md`),
         scope: identityScope,
-        sceneLabel: `private:${entry.sceneId}`,
-        ownerLabel: entry.ownerLabel || ownerId,
+        sceneLabel: `private:${entry.transcript_scene_id}`,
+        ownerLabel: entry.owner_label || ownerId,
         summary: entry.summary || "该文件记录一个私聊对象的连续对话转录。",
       };
     }
 
     return {
-      filePath: path.join(rootDir, "custom", `${String(entry.sceneId || "unknown")}.md`),
+      filePath: path.join(rootDir, "custom", `${String(entry.transcript_scene_id || "unknown")}.md`),
       scope: "custom",
-      sceneLabel: `${entry.sceneType}:${entry.sceneId}`,
-      ownerLabel: entry.ownerLabel || String(entry.ownerId || entry.sceneId || "unknown"),
+      sceneLabel: `${entry.scene_type}:${entry.transcript_scene_id}`,
+      ownerLabel: entry.owner_label || String(entry.owner_id || entry.transcript_scene_id || "unknown"),
       summary: entry.summary || "该文件记录一个自定义场景下的连续对话转录。",
     };
   }
@@ -104,7 +104,7 @@ export class PluginSceneTranscriptService {
   }
 
   private formatEntry(entry: PluginSceneTranscriptEntry, content: string): string {
-    const occurredAt = this.formatTimestamp(entry.occurredAt);
+    const occurredAt = this.formatTimestamp(entry.occurred_at);
     const tags = Array.isArray(entry.tags) && entry.tags.length > 0
       ? ` [${entry.tags.join("/")}]`
       : "";

@@ -71,11 +71,23 @@ def test_kernel_to_python_integration_end_to_end():
                 "ambient_interval_ms": 2000,
                 "default_mode": "standby",
                 "focus_duration_ms": 10000,
+                "ingress_debounce_ms": 600,
+                "ingress_focused_debounce_ms": 300,
+                "ingress_max_batch_messages": 4,
+                "ingress_max_batch_items": 24,
                 "summon_keywords": ["月见"],
                 "focus_on_any_chat": False,
                 "active_thought_modes": ["ambient", "focused"],
             },
-            "memory": {"max_recall_count": 5, "retention_days": 30},
+            "memory": {
+                "max_recall_count": 5,
+                "retention_days": 30,
+                "context_limit": 5,
+                "conversation_window": 8,
+                "summary_trigger_count": 12,
+                "summary_keep_recent_count": 4,
+                "summary_max_chars": 1200,
+            },
                 "multimodal": {
                     "enabled": True,
                     "strategy": "specialist_then_core",
@@ -83,6 +95,14 @@ def test_kernel_to_python_integration_end_to_end():
                     "core_model": "qwen-vl-core",
                     "image_model": "qwen-image-specialist",
                     "video_model": "qwen-video-specialist",
+                },
+                "action_stream": {
+                    "enabled": True,
+                    "channel": "live2d",
+                    "chunk_interval_ms": 80,
+                    "max_chunks_per_stream": 120,
+                    "emit_thinking_chunks": True,
+                    "emit_emotion_on_complete": True,
                 },
         },
         "llm": {"api_type": "local"},
@@ -224,7 +244,7 @@ def test_kernel_and_python_integration_end_to_end():
 
         os.makedirs(os.path.join(configs_dir, "python-ai"), exist_ok=True)
         open(os.path.join(configs_dir, "python-ai", "inference.yaml"), "w", encoding="utf-8").write(
-            "inference:\n  model:\n    local_model_path: \"/tmp\"\n    max_tokens: 16\n    temperature: 0.7\n    top_p: 0.9\n    frequency_penalty: 0.0\n  life_clock:\n    focused_interval_ms: 1000\n    ambient_interval_ms: 2000\n    default_mode: \"standby\"\n    focus_duration_ms: 10000\n    summon_keywords: [\"月见\"]\n    focus_on_any_chat: false\n    active_thought_modes: [\"ambient\", \"focused\"]\n  memory:\n    max_recall_count: 5\n    retention_days: 30\n    context_limit: 5\n  multimodal:\n    enabled: true\n    strategy: \"specialist_then_core\"\n    max_items: 6\n    core_model: \"qwen-vl-core\"\n    image_model: \"qwen-image-specialist\"\n    video_model: \"qwen-video-specialist\"\n"
+            "inference:\n  model:\n    local_model_path: \"/tmp\"\n    max_tokens: 16\n    temperature: 0.7\n    top_p: 0.9\n    frequency_penalty: 0.0\n  life_clock:\n    focused_interval_ms: 1000\n    ambient_interval_ms: 2000\n    default_mode: \"standby\"\n    focus_duration_ms: 10000\n    summon_keywords: [\"月见\"]\n    focus_on_any_chat: false\n    active_thought_modes: [\"ambient\", \"focused\"]\n  memory:\n    max_recall_count: 5\n    retention_days: 30\n    context_limit: 5\n    conversation_window: 8\n    summary_trigger_count: 12\n    summary_keep_recent_count: 4\n    summary_max_chars: 1200\n  multimodal:\n    enabled: true\n    strategy: \"specialist_then_core\"\n    max_items: 6\n    core_model: \"qwen-vl-core\"\n    image_model: \"qwen-image-specialist\"\n    video_model: \"qwen-video-specialist\"\n  action_stream:\n    enabled: true\n    channel: \"live2d\"\n    chunk_interval_ms: 80\n    max_chunks_per_stream: 120\n    emit_thinking_chunks: true\n    emit_emotion_on_complete: true\n"
         )
         open(os.path.join(configs_dir, "python-ai", "persona.yaml"), "w", encoding="utf-8").write(
             "persona:\n  base:\n    name: \"x\"\n    nickname: \"x\"\n    role: \"x\"\n    apparent_age: \"x\"\n    gender: \"x\"\n    appearance: \"x\"\n    background: \"x\"\n  core:\n    personality: \"x\"\n    character_core: \"x\"\n    likes: \"x\"\n  dialogue:\n    dialogue_style: \"x\"\n    emotion_control: \"x\"\n  safety:\n    taboos: \"x\"\n    forbidden_phrases: []\n    forbidden_regex: []\n"
@@ -243,7 +263,7 @@ def test_kernel_and_python_integration_end_to_end():
             "start_timeout_ms: 30000\nstop_timeout_ms: 30000\nmodule_start_order: [\"config\", \"persistence\", \"ipc\", \"python_ai\", \"plugins\", \"life_clock\"]\nmodule_stop_order: [\"life_clock\", \"plugins\", \"python_ai\", \"ipc\", \"persistence\", \"config\"]\n"
         )
         open(os.path.join(configs_dir, "kernel", "memory.yaml"), "w", encoding="utf-8").write(
-            "max_recall_count: 5\nretention_days: 30\ncontext_limit: 5\n"
+            "max_recall_count: 5\nretention_days: 30\ncontext_limit: 5\nconversation_window: 8\nsummary_trigger_count: 12\nsummary_keep_recent_count: 4\nsummary_max_chars: 1200\n"
         )
         open(os.path.join(configs_dir, "kernel", "plugin.yaml"), "w", encoding="utf-8").write(
             "plugin_root_dir: \"plugins\"\n\nsandbox:\n  enable_isolation: true\n  timeout_ms: 5000\n  allow_native_modules: false\n\ndefault_permissions: []\nplugin_blacklist: []\n"

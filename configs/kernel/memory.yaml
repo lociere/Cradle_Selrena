@@ -1,4 +1,8 @@
 # 记忆规则配置
 max_recall_count: 5
 retention_days: 30
-context_limit: 5
+context_limit: 6
+conversation_window: 12
+summary_trigger_count: 18
+summary_keep_recent_count: 6
+summary_max_chars: 2400

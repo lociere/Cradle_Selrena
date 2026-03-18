@@ -8,6 +8,7 @@ import {
   ChatMessageResponse,
   LifeHeartbeatRequest,
   LifeHeartbeatResponse,
+  PerceptionCancelRequest,
   PerceptionMessageRequest,
 } from "@cradle-selrena/protocol";
 import { PythonAIManager } from "./python-manager";
@@ -28,8 +29,12 @@ export class AIProxy {
     return PythonAIManager.instance.isReady;
   }
 
-  public async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
-    return PythonAIManager.instance.sendPerceptionMessage(request);
+  public async sendPerceptionMessage(request: PerceptionMessageRequest, traceId?: string): Promise<ChatMessageResponse> {
+    return PythonAIManager.instance.sendPerceptionMessage(request, traceId);
+  }
+
+  public async cancelPerception(request: PerceptionCancelRequest): Promise<void> {
+    await PythonAIManager.instance.cancelPerception(request);
   }
 
   public async requestAgentPlan(request: AgentPlanRequest): Promise<AgentPlanResponse> {

@@ -6,10 +6,18 @@
 import { ConfigManager } from "../../core/config/config-manager";
 import { AIProxy } from "../ai/ai-proxy";
 import { getLogger } from "../../core/observability/logger";
+import { AttentionTrigger, AttentionTriggerResult } from "./triggers/attention-trigger";
+import { WakeKeywordTrigger } from "./triggers/wake-keyword-trigger";
 
 const logger = getLogger("life-clock-manager");
 
 export type AttentionMode = "standby" | "ambient" | "focused";
+type SourceAttentionPolicy =
+  | "always_focused"
+  | "wake_word_focus"
+  | "wake_word_focus_with_timeout"
+  | "chat_or_wake_focus_with_timeout"
+  | "ignore";
 
 /**
  * 生命时钟管理器
@@ -29,6 +37,16 @@ export class LifeClockManager {
   private _summonKeywords: string[] = [];
   private _activeThoughtModes: Set<AttentionMode> = new Set(["ambient", "focused"]);
   private _heartbeatEnabled: boolean = true;
+  private _stickyFocusSource: string | null = null;
+  private _sourceFocusPolicies: Record<string, SourceAttentionPolicy> = {
+    private: "always_focused",
+    group: "wake_word_focus_with_timeout",
+    channel: "wake_word_focus_with_timeout",
+    terminal: "chat_or_wake_focus_with_timeout",
+    system: "ignore",
+    unknown: "chat_or_wake_focus_with_timeout",
+  };
+  private readonly _triggers: Map<string, AttentionTrigger> = new Map();
 
   /**
    * 获取单例实例
@@ -57,6 +75,11 @@ export class LifeClockManager {
     this._summonKeywords = lifeClock.summon_keywords;
     this._activeThoughtModes = new Set(lifeClock.active_thought_modes);
     this._heartbeatEnabled = this._activeThoughtModes.size > 0;
+    this._sourceFocusPolicies = {
+      ...this._sourceFocusPolicies,
+      ...(lifeClock.source_focus_policies || {}),
+    };
+    this.ensureDefaultTriggers();
 
     logger.info("生命时钟管理器初始化完成", {
       focused_interval_ms: this._focusedIntervalMs,
@@ -65,6 +88,7 @@ export class LifeClockManager {
       focus_duration_ms: this._focusDurationMs,
       focus_on_any_chat: this._focusOnAnyChat,
       summon_keywords: this._summonKeywords,
+      source_focus_policies: this._sourceFocusPolicies,
       active_thought_modes: Array.from(this._activeThoughtModes),
       heartbeat_enabled: this._heartbeatEnabled,
     });
@@ -129,22 +153,52 @@ export class LifeClockManager {
   /**
    * 消息触发注意力状态变化：支持“呼唤后聚焦”与“任意聊天聚焦”两种策略
    */
-  public onUserMessage(content: string): void {
+  public onUserMessage(content: string, sourceType: string = "unknown"): void {
     if (!this._isRunning || !this._heartbeatEnabled) return;
-    const normalized = (content || "").toLowerCase();
+    const normalized = String(content || "");
+    const normalizedSource = String(sourceType || "unknown").toLowerCase();
+    const policy = this.resolveSourcePolicy(normalizedSource);
+    const trigger = this.evaluateTriggers(normalized, normalizedSource);
 
-    const summoned = this._summonKeywords.some((keyword) => {
-      const k = keyword.trim().toLowerCase();
-      return k.length > 0 && normalized.includes(k);
-    });
-
-    if (summoned || this._focusOnAnyChat) {
-      this.setMode("focused", summoned ? "summon" : "chat");
+    if (policy === "ignore") {
       return;
     }
 
-    // 在聚焦态下，非呼唤消息也会刷新聚焦倒计时，避免对话中途退回。
-    if (this._mode === "focused") {
+    if (policy === "always_focused") {
+      this._stickyFocusSource = normalizedSource;
+      this.setMode("focused", `${normalizedSource}_always_focus`);
+      this.clearFocusResetTimer();
+      return;
+    }
+
+    if (this._stickyFocusSource && this._stickyFocusSource !== normalizedSource) {
+      this._stickyFocusSource = null;
+      if (this._mode === "focused") {
+        this.setMode(this._defaultMode, "leave_sticky_focus");
+      }
+    }
+
+    if (policy === "wake_word_focus") {
+      if (trigger.matched) {
+        this.setMode("focused", `${normalizedSource}_${trigger.reason || "trigger"}`);
+        this.clearFocusResetTimer();
+      }
+      return;
+    }
+
+    if (policy === "wake_word_focus_with_timeout") {
+      if (trigger.matched) {
+        this.setMode("focused", `${normalizedSource}_${trigger.reason || "trigger"}`);
+      }
+      return;
+    }
+
+    if (trigger.matched) {
+      this.setMode("focused", trigger.reason || "trigger");
+      return;
+    }
+
+    if (this._mode === "focused" && !this._stickyFocusSource) {
       this.scheduleFocusReset();
     }
   }
@@ -154,7 +208,7 @@ export class LifeClockManager {
    */
   public setMode(mode: AttentionMode, reason: string = "manual"): void {
     if (this._mode === mode) {
-      if (mode === "focused") {
+      if (mode === "focused" && !this._stickyFocusSource) {
         this.scheduleFocusReset();
       }
       return;
@@ -165,8 +219,13 @@ export class LifeClockManager {
     logger.info("注意力模式切换", { from: prev, to: mode, reason });
 
     if (mode === "focused") {
-      this.scheduleFocusReset();
+      if (this._stickyFocusSource) {
+        this.clearFocusResetTimer();
+      } else {
+        this.scheduleFocusReset();
+      }
     } else {
+      this._stickyFocusSource = null;
       this.clearFocusResetTimer();
     }
 
@@ -222,6 +281,44 @@ export class LifeClockManager {
       clearTimeout(this._timer);
       this._timer = null;
     }
+    this._stickyFocusSource = null;
     this.clearFocusResetTimer();
+  }
+
+  private resolveSourcePolicy(sourceType: string): SourceAttentionPolicy {
+    const policy = this._sourceFocusPolicies[sourceType] || this._sourceFocusPolicies.unknown;
+    if (!policy) {
+      return "chat_or_wake_focus_with_timeout";
+    }
+    return policy;
+  }
+
+  public registerTrigger(trigger: AttentionTrigger): void {
+    this._triggers.set(trigger.id, trigger);
+  }
+
+  public unregisterTrigger(triggerId: string): void {
+    this._triggers.delete(triggerId);
+  }
+
+  private ensureDefaultTriggers(): void {
+    if (!this._triggers.has("wake-keyword-trigger")) {
+      this.registerTrigger(new WakeKeywordTrigger());
+    }
+  }
+
+  private evaluateTriggers(content: string, sourceType: string): AttentionTriggerResult {
+    for (const trigger of this._triggers.values()) {
+      const result = trigger.evaluate({
+        content,
+        sourceType,
+        summonKeywords: this._summonKeywords,
+        focusOnAnyChat: this._focusOnAnyChat,
+      });
+      if (result.matched) {
+        return result;
+      }
+    }
+    return { matched: false };
   }
 }

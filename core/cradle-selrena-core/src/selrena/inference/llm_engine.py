@@ -8,6 +8,7 @@
 3. 可插拔替换，更换模型仅需修改这里，核心代码零改动
 4. 兼容本地模型和云端LLM，自动适配
 """
+from dataclasses import dataclass
 import json
 from typing import Optional
 from urllib import error, request
@@ -20,6 +21,21 @@ from selrena.core.observability.logger import get_logger
 
 # 初始化模块日志器
 logger = get_logger("llm_engine")
+
+
+@dataclass(frozen=True)
+class LLMMessage:
+    """单条模型消息。"""
+
+    role: str
+    content: str
+
+
+@dataclass(frozen=True)
+class LLMRequest:
+    """消息式推理请求。"""
+
+    messages: list[LLMMessage]
 
 
 # ======================================
@@ -63,7 +79,22 @@ class LLMEngine:
         except Exception as e:
             raise InferenceException(f"本地模型加载失败: {str(e)}")
 
-    def _generate_via_api(self, full_prompt: str) -> str:
+    def _render_messages_as_prompt(self, llm_request: LLMRequest) -> str:
+        sections: list[str] = []
+        for message in llm_request.messages:
+            content = message.content.strip()
+            if not content:
+                continue
+            sections.append(f"[{message.role}]\n{content}")
+        return "\n\n".join(sections)
+
+    def _extract_latest_user_text(self, llm_request: LLMRequest) -> str:
+        for message in reversed(llm_request.messages):
+            if message.role == "user" and message.content.strip():
+                return message.content.strip()
+        return ""
+
+    def _generate_via_api(self, llm_request: LLMRequest) -> str:
         """通过云端/API LLM生成回复"""
         if not self.llm_config:
             raise InferenceException("缺少 LLM 配置，无法调用云端服务")
@@ -86,29 +117,39 @@ class LLMEngine:
         model_name = self.llm_config.model or (
             "deepseek-chat" if api_type == "deepseek" else self.config.local_model_path
         )
+        prompt_text = self._render_messages_as_prompt(llm_request)
+        message_payload = [
+            {"role": message.role, "content": message.content}
+            for message in llm_request.messages
+            if message.content.strip()
+        ]
 
         # 默认请求体（OpenAI/DeepSeek 兼容）
         if request_path.endswith("/chat/completions"):
             default_payload = {
                 "model": model_name,
-                "messages": [{"role": "user", "content": full_prompt}],
+                "messages": message_payload,
                 "max_tokens": self.config.max_tokens,
                 "temperature": self.llm_config.temperature if self.llm_config.temperature is not None else self.config.temperature,
             }
         else:
             default_payload = {
                 "model": model_name,
-                "prompt": full_prompt,
+                "prompt": prompt_text,
                 "max_tokens": self.config.max_tokens,
                 "temperature": self.llm_config.temperature if self.llm_config.temperature is not None else self.config.temperature,
             }
 
-        # 支持自定义请求体模板（占位符：{prompt},{model},{temperature}）
+        # 支持自定义请求体模板。
+        # 可用占位符：{prompt} {prompt_json} {messages} {messages_json} {model} {temperature}
         if self.llm_config.request_body_template:
             template = self.llm_config.request_body_template
             try:
                 body_text = template.format(
-                    prompt=full_prompt,
+                    prompt=prompt_text,
+                    prompt_json=json.dumps(prompt_text, ensure_ascii=False),
+                    messages=json.dumps(message_payload, ensure_ascii=False),
+                    messages_json=json.dumps(message_payload, ensure_ascii=False),
                     model=default_payload["model"],
                     temperature=default_payload["temperature"],
                 )
@@ -184,11 +225,11 @@ class LLMEngine:
             return current.strip()
         return str(current)
 
-    def generate(self, full_prompt: str) -> str:
+    def generate(self, llm_request: LLMRequest) -> str:
         """
         生成回复，纯算力调用
         参数：
-            full_prompt: 应用层构建好的完整prompt，包含人设、记忆、情绪、用户输入
+            llm_request: 应用层构建好的消息式会话请求
         返回：LLM生成的纯文本
         异常：
             InferenceException: 生成失败时抛出
@@ -197,7 +238,7 @@ class LLMEngine:
             # 云端/API优先（如果配置了llm.api_type且不是 local）
             if self.llm_config and self.llm_config.api_type and self.llm_config.api_type.lower() != "local":
                 try:
-                    reply = self._generate_via_api(full_prompt)
+                    reply = self._generate_via_api(llm_request)
                     logger.debug("LLM API 生成完成", reply_length=len(reply))
                     return reply
                 except InferenceException as api_error:
@@ -222,7 +263,8 @@ class LLMEngine:
             # reply = output["choices"][0]["text"].strip()
 
             # 临时示例，生产环境替换成真实模型调用
-            reply = f"哼，{full_prompt.split('用户对你说：')[-1].split('\n')[0]}...笨蛋，我才没有在意呢。"
+            latest_user_text = self._extract_latest_user_text(llm_request) or "又来找我了？"
+            reply = f"哼，{latest_user_text.splitlines()[0]}...笨蛋，我才没有在意呢。"
 
             logger.debug("LLM生成完成", reply_length=len(reply))
             return reply.strip()

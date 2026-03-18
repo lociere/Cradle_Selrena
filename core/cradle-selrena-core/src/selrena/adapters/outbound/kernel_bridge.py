@@ -38,12 +38,14 @@ class KernelBridge:
         """初始化，仅在单例创建时执行一次"""
         self._context = zmq.asyncio.Context()
         self._socket: zmq.asyncio.Socket | None = None
-        self._handlers: dict[str, Callable[[dict], Coroutine[Any, Any, None]]] = {}
+        self._handlers: dict[str, Callable[[dict], Coroutine[Any, Any, Any]]] = {}
         self._is_running: bool = False
         self._receive_task: asyncio.Task | None = None
+        self._inflight_tasks: dict[str, asyncio.Task] = {}
+        self._send_lock = asyncio.Lock()
         logger.info("内核通信桥接初始化完成")
 
-    def register_handler(self, message_type: str, handler: Callable[[dict], Coroutine[Any, Any, None]]) -> None:
+    def register_handler(self, message_type: str, handler: Callable[[dict], Coroutine[Any, Any, Any]]) -> None:
         """
         注册消息处理器
         参数：
@@ -79,6 +81,11 @@ class KernelBridge:
         """停止桥接服务，优雅关闭所有资源"""
         self._is_running = False
 
+        for trace_id, task in list(self._inflight_tasks.items()):
+            if not task.done():
+                task.cancel()
+            self._inflight_tasks.pop(trace_id, None)
+
         if self._receive_task and not self._receive_task.done():
             self._receive_task.cancel()
             try:
@@ -105,10 +112,99 @@ class KernelBridge:
             raise BridgeException("内核桥接未启动，无法发送消息")
 
         try:
-            await self._socket.send_json(message)
+            async with self._send_lock:
+                await self._socket.send_json(message)
             logger.debug("消息发送成功", message_type=message.get("type"))
         except Exception as e:
             raise BridgeException(f"消息发送失败: {str(e)}")
+
+    async def _send_response(self, response: dict) -> None:
+        """在并发场景下安全发送响应。"""
+        if not self._socket:
+            return
+        async with self._send_lock:
+            await self._socket.send_json(response)
+
+    async def _run_handler_task(self, message: dict, handler: Callable[[dict], Coroutine[Any, Any, Any]]) -> None:
+        """执行单个请求处理任务，确保每个请求独立可取消。"""
+        trace_id = message.get("trace_id", "")
+        message_type = message.get("type")
+
+        try:
+            result = await handler(message)
+            response = {
+                "type": "success_response",
+                "trace_id": trace_id,
+                "success": True,
+                "data": None,
+            }
+
+            if hasattr(result, "__dict__"):
+                response["data"] = result.__dict__
+            elif hasattr(result, "_asdict"):
+                response["data"] = result._asdict()
+            else:
+                response["data"] = result
+
+            await self._send_response(response)
+        except asyncio.CancelledError:
+            logger.info(
+                "请求处理任务已取消",
+                message_type=message_type,
+                trace_id=trace_id,
+            )
+            await self._send_response({
+                "type": "error_response",
+                "trace_id": trace_id,
+                "success": False,
+                "error": {
+                    "code": "CANCELLED",
+                    "message": "请求已被中断",
+                },
+            })
+            raise
+        except Exception as e:
+            logger.error(
+                f"消息处理器执行失败: {str(e)}",
+                message_type=message_type,
+                trace_id=trace_id,
+                exc_info=True
+            )
+            await self._send_response({
+                "type": "error_response",
+                "trace_id": trace_id,
+                "success": False,
+                "error": {
+                    "code": getattr(e, "code", "UNKNOWN_ERROR"),
+                    "message": str(e),
+                },
+            })
+        finally:
+            if trace_id and self._inflight_tasks.get(trace_id):
+                self._inflight_tasks.pop(trace_id, None)
+
+    async def _handle_cancel_request(self, message: dict) -> None:
+        """按 trace_id 取消正在执行的请求任务。"""
+        trace_id = message.get("trace_id", "")
+        payload = message.get("payload", {}) or {}
+        target_trace_id = str(payload.get("target_trace_id", "")).strip()
+
+        cancelled = False
+        if target_trace_id:
+            task = self._inflight_tasks.get(target_trace_id)
+            if task and not task.done():
+                task.cancel()
+                cancelled = True
+
+        await self._send_response({
+            "type": "success_response",
+            "trace_id": trace_id,
+            "success": True,
+            "data": {
+                "target_trace_id": target_trace_id,
+                "cancelled": cancelled,
+            },
+        })
 
     async def _receive_loop(self) -> None:
         """后台接收循环，持续接收内核的消息，分发给对应的处理器"""
@@ -125,43 +221,17 @@ class KernelBridge:
                 )
 
                 handler = self._handlers.get(message_type)
+                if message_type == "perception_cancel":
+                    await self._handle_cancel_request(message)
+                    continue
+
                 if not handler:
                     logger.warning(f"未找到消息类型 {message_type} 的处理器")
                     continue
 
-                try:
-                    result = await handler(message)
-                    response = {
-                        "type": "success_response",
-                        "trace_id": trace_id,
-                        "success": True,
-                        "data": None,
-                    }
-
-                    if hasattr(result, "__dict__"):
-                        response["data"] = result.__dict__
-                    elif hasattr(result, "_asdict"):
-                        response["data"] = result._asdict()
-                    else:
-                        response["data"] = result
-
-                    await self._socket.send_json(response)
-                except Exception as e:
-                    logger.error(
-                        f"消息处理器执行失败: {str(e)}",
-                        message_type=message_type,
-                        trace_id=trace_id,
-                        exc_info=True
-                    )
-                    await self._socket.send_json({
-                        "type": "error_response",
-                        "trace_id": trace_id,
-                        "success": False,
-                        "error": {
-                            "code": getattr(e, "code", "UNKNOWN_ERROR"),
-                            "message": str(e),
-                        },
-                    })
+                task = asyncio.create_task(self._run_handler_task(message, handler))
+                if trace_id:
+                    self._inflight_tasks[trace_id] = task
 
             except zmq.ZMQError as e:
                 if self._is_running:

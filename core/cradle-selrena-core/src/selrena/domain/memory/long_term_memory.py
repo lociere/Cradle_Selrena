@@ -14,6 +14,7 @@ from uuid import uuid4
 from datetime import datetime
 from typing import List, Dict, Optional
 import asyncio
+from selrena.core.contracts.kernel_ingress_contracts import KernelLongTermMemoryRecord
 from selrena.domain.multimodal.multimodal_content import MultimodalContent
 from selrena.core.event_bus import DomainEvent, DomainEventBus
 from selrena.core.observability.logger import get_logger
@@ -102,7 +103,7 @@ class LongTermMemory:
         self._event_bus = DomainEventBus()
         logger.info("长期记忆系统初始化完成")
 
-    def init_from_kernel(self, memories: List[dict]) -> None:
+    def init_from_kernel(self, memories: List[KernelLongTermMemoryRecord]) -> None:
         """
         内核启动时注入历史长期记忆，AI层绝对不读本地文件
         参数：
@@ -110,13 +111,13 @@ class LongTermMemory:
         """
         for mem in memories:
             fragment = LongTermMemoryFragment(
-                content=mem["content"],
-                memory_type=LongTermMemoryType(mem["memory_type"]),
-                weight=mem["weight"],
-                tags=mem["tags"],
-                scene_id=mem.get("scene_id", ""),
-                memory_id=mem["memory_id"],
-                timestamp=datetime.fromisoformat(mem["timestamp"])
+                content=mem.content,
+                memory_type=LongTermMemoryType(mem.memory_type),
+                weight=mem.weight,
+                tags=mem.tags,
+                scene_id=mem.scene_id,
+                memory_id=mem.memory_id,
+                timestamp=datetime.fromisoformat(mem.timestamp),
             )
             self._memories[fragment.memory_id] = fragment
         logger.info("历史长期记忆注入完成", memory_count=len(self._memories))

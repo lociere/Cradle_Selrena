@@ -4,6 +4,10 @@ import {
   ASRRecognizeRequest,
   ASRRecognizeResponse,
   ChatMessageResponse,
+  MessageSourceMeta,
+  MessageSourceType,
+  SceneRoutingHint,
+  SceneSessionPolicy,
   PerceptionMessageRequest,
   TTSSynthesizeRequest,
   TTSSynthesizeResponse,
@@ -14,26 +18,42 @@ export type PluginLogLevel = "debug" | "info" | "warn" | "error" | "critical";
 
 export type PluginTranscriptSceneScope = "group_scene" | "private_session" | "custom";
 
+export interface SceneRoutingRequest {
+  source: MessageSourceMeta;
+  routing?: SceneRoutingHint;
+}
+
+export interface SceneRoutingResult {
+  scene_id: string;
+  source: MessageSourceMeta;
+  source_type: MessageSourceType;
+  source_id: string;
+  actor_id?: string;
+  actor_name?: string;
+  session_policy: SceneSessionPolicy;
+}
+
 export interface PluginSceneTranscriptEntry {
-  rootDir?: string;
-  sceneScope: PluginTranscriptSceneScope;
-  sceneType: "group" | "private" | "channel" | "custom";
-  sceneId: string;
-  identityScope?: string;
-  ownerId?: string;
-  ownerLabel?: string;
+  root_dir?: string;
+  scene_scope: PluginTranscriptSceneScope;
+  scene_type: "group" | "private" | "channel" | "custom";
+  transcript_scene_id: string;
+  identity_scope?: string;
+  owner_id?: string;
+  owner_label?: string;
   summary?: string;
   role: "user" | "assistant" | "system";
   speaker: string;
   content: string;
   tags?: string[];
-  occurredAt?: string;
+  occurred_at?: string;
 }
 
 export interface IKernelProxy {
   log(level: string, message: string, meta?: Record<string, unknown>): void;
   logState(level: PluginLogLevel, stateKey: string, snapshot: unknown, message: string, meta?: Record<string, unknown>): void;
-  sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse>;
+  resolveScene(request: SceneRoutingRequest): Promise<SceneRoutingResult>;
+  ingestPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse | null>;
   synthesizeSpeech(request: TTSSynthesizeRequest): Promise<TTSSynthesizeResponse>;
   recognizeSpeech(request: ASRRecognizeRequest): Promise<ASRRecognizeResponse>;
   appendSceneTranscript(entry: PluginSceneTranscriptEntry): Promise<void>;

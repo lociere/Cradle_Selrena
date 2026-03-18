@@ -4,7 +4,7 @@ import pytest
 
 from selrena.core.config import GlobalAIConfig
 from selrena.domain.self.self_entity import SelrenaSelfEntity
-from selrena.inference.llm_engine import LLMEngine
+from selrena.inference.llm_engine import LLMEngine, LLMMessage, LLMRequest
 
 
 def make_minimal_config(llm_api_type: str = "local", **llm_kwargs: str) -> GlobalAIConfig:
@@ -49,11 +49,23 @@ def make_minimal_config(llm_api_type: str = "local", **llm_kwargs: str) -> Globa
                 "ambient_interval_ms": 2000,
                 "default_mode": "standby",
                 "focus_duration_ms": 10000,
+                "ingress_debounce_ms": 600,
+                "ingress_focused_debounce_ms": 300,
+                "ingress_max_batch_messages": 4,
+                "ingress_max_batch_items": 24,
                 "summon_keywords": ["月见"],
                 "focus_on_any_chat": False,
                 "active_thought_modes": ["ambient", "focused"],
             },
-            "memory": {"max_recall_count": 5, "retention_days": 30},
+            "memory": {
+                "max_recall_count": 5,
+                "retention_days": 30,
+                "context_limit": 5,
+                "conversation_window": 8,
+                "summary_trigger_count": 12,
+                "summary_keep_recent_count": 4,
+                "summary_max_chars": 1200,
+            },
             "multimodal": {
                 "enabled": True,
                 "strategy": "specialist_then_core",
@@ -61,6 +73,14 @@ def make_minimal_config(llm_api_type: str = "local", **llm_kwargs: str) -> Globa
                 "core_model": "qwen-vl-core",
                 "image_model": "qwen-image-specialist",
                 "video_model": "qwen-video-specialist",
+            },
+            "action_stream": {
+                "enabled": True,
+                "channel": "live2d",
+                "chunk_interval_ms": 80,
+                "max_chunks_per_stream": 120,
+                "emit_thinking_chunks": True,
+                "emit_emotion_on_complete": True,
             },
         },
         llm=llm_conf,
@@ -72,7 +92,7 @@ def test_llm_engine_local_mode_should_return_dummy_reply():
     self_entity = SelrenaSelfEntity(persona_config=config.persona, inference_config=config.inference)
     engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
 
-    reply = engine.generate("hello")
+    reply = engine.generate(LLMRequest(messages=[LLMMessage(role="user", content="hello")]))
     assert isinstance(reply, str)
     assert len(reply) > 0
 
@@ -84,7 +104,10 @@ def test_llm_engine_api_mode_requires_api_key(api_type: str):
     engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
 
     # 引擎会自动降级，不应抛出异常
-    assert isinstance(engine.generate("hello"), str)
+    assert isinstance(
+        engine.generate(LLMRequest(messages=[LLMMessage(role="user", content="hello")])),
+        str,
+    )
 
 
 def test_llm_engine_api_mode_happy_path(monkeypatch: pytest.MonkeyPatch):
@@ -112,20 +135,29 @@ def test_llm_engine_api_mode_happy_path(monkeypatch: pytest.MonkeyPatch):
         return FakeResponse(json.dumps(payload).encode("utf-8"))
 
     # 使用 **kwargs 传入 request_body_template
-    # 注意：由于 llm_engine 使用 str.format，JSON 的大括号需要转义为 {{ 和 }}
+    # 注意：由于 llm_engine 使用 str.format，JSON 的大括号需要转义为 {{ 和 }}。
+    # prompt_json 会自动做 JSON 转义，避免多行消息导致模板失效。
     config = make_minimal_config(
         "deepseek",
-        request_body_template='{{"model":"{model}","prompt":"{prompt}","temperature":{temperature}}}'
+        request_body_template='{{"model":"{model}","prompt":{prompt_json},"temperature":{temperature}}}'
     )
     
     self_entity = SelrenaSelfEntity(persona_config=config.persona, inference_config=config.inference)
     engine = LLMEngine(self_entity=self_entity, llm_config=config.llm)
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    reply = engine.generate("hello")
+    reply = engine.generate(
+        LLMRequest(
+            messages=[
+                LLMMessage(role="system", content="system prompt"),
+                LLMMessage(role="user", content="hello"),
+            ]
+        )
+    )
 
     assert reply == "fake response"
     assert captured["request"].full_url.endswith("/chat/completions")
     body = json.loads(captured["request"].data.decode("utf-8"))
-    assert body["prompt"] == "hello"
+    assert "system prompt" in body["prompt"]
+    assert "hello" in body["prompt"]
 

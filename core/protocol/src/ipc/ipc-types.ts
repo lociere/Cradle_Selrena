@@ -7,6 +7,7 @@ import { ErrorCode, TraceContext } from "../core";
 export enum IPCMessageType {
   // 内核发送到AI层的消息类型
   PERCEPTION_MESSAGE = "perception_message",
+  PERCEPTION_CANCEL = "perception_cancel",
   AGENT_PLAN = "agent_plan",
   LIFE_HEARTBEAT = "life_heartbeat",
   MEMORY_SYNC = "memory_sync",
@@ -84,6 +85,7 @@ export function createErrorResponse(
 // 下面是常用的业务类型定义（可根据需要扩展）
 
 export type MessageSourceType = "private" | "group" | "channel" | "terminal" | "system" | "unknown";
+export type SceneSessionPolicy = "by_source" | "by_actor";
 
 export type PerceptionModalityType = "text" | "image" | "video";
 
@@ -94,6 +96,16 @@ export interface MessageSourceMeta {
   vessel_id: string;
   source_type: MessageSourceType;
   source_id: string;
+}
+
+export interface MessageActorMeta {
+  actor_id: string;
+  actor_name?: string;
+}
+
+export interface SceneRoutingHint {
+  session_policy?: SceneSessionPolicy;
+  actor?: MessageActorMeta;
 }
 
 export interface PerceptionModalityItem {
@@ -117,6 +129,13 @@ export interface PerceptionMessageRequest {
   scene_id: string;
   familiarity?: number;
   source: MessageSourceMeta;
+  routing?: SceneRoutingHint;
+}
+
+export interface PerceptionCancelRequest {
+  scene_id: string;
+  target_trace_id: string;
+  reason?: string;
 }
 
 export interface ChatMessageResponse {
@@ -128,6 +147,38 @@ export interface ChatMessageResponse {
 export interface AgentPlanRequest {
   user_goal: string;
   scene_id?: string;
+}
+
+export type IPCKnowledgeScope = "persona" | "general";
+
+export interface IPCKnowledgeRecord {
+  entry_id: string;
+  scope: IPCKnowledgeScope;
+  content: string;
+  priority: number;
+  tags: string[];
+  enabled: boolean;
+  source: string;
+  updated_at: string;
+}
+
+export interface IPCKnowledgeRetrievalConfig {
+  persona_top_k: number;
+  general_top_k: number;
+  min_score: number;
+  keyword_weight: number;
+  tag_weight: number;
+  priority_weight: number;
+}
+
+export interface IPCKnowledgeBaseInitPayload {
+  version: string;
+  retrieval: IPCKnowledgeRetrievalConfig;
+  entries: IPCKnowledgeRecord[];
+}
+
+export interface KnowledgeInitRequest {
+  knowledge_base: IPCKnowledgeBaseInitPayload;
 }
 
 export interface MCPToolSuggestion {

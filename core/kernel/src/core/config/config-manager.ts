@@ -6,10 +6,14 @@
 import fs from "fs-extra";
 import path from "path";
 import yaml from "yaml";
-import { z } from "zod";
 import { GlobalConfig, GlobalConfigSchema } from "./config-schema";
 import { getLogger } from "../observability/logger";
-import { CoreException, ErrorCode } from "@cradle-selrena/protocol";
+import {
+  CoreException,
+  ErrorCode,
+  KnowledgeBaseConfig,
+  KnowledgeBaseConfigSchema,
+} from "@cradle-selrena/protocol";
 
 const logger = getLogger("config-manager");
 
@@ -88,23 +92,9 @@ export class ConfigManager {
         path.join("python-ai", "llm.yaml")
       );
 
-      // 如果 llm.yaml 未显式写入 api_key，则尝试从 secrets.yaml 的 providers 下自动补全
-      if (llmConfig && !llmConfig.api_key) {
-        const secretsPath = path.join(this._configDir, "secret", "secrets.yaml");
-        if (await fs.pathExists(secretsPath)) {
-          try {
-            const secretsContent = await fs.readFile(secretsPath, "utf-8");
-            const secrets = yaml.parse(secretsContent) as any;
-            const providerKey = (llmConfig.api_type || "deepseek").toLowerCase();
-            const provider = secrets?.providers?.[providerKey];
-            if (provider?.api_key) {
-              llmConfig.api_key = provider.api_key;
-              logger.info("已从 secrets.yaml 自动注入 LLM API Key", { provider: providerKey });
-            }
-          } catch {
-            // 忽略 secrets 解析错误，继续使用 llm.yaml 中配置
-          }
-        }
+      // 从 secrets.yaml 自动补全主 provider 与 providers 子配置的 api_key
+      if (llmConfig) {
+        await this.injectLLMApiKeysFromSecrets(llmConfig as any);
       }
 
       aiConfig.llm = llmConfig;
@@ -181,6 +171,82 @@ export class ConfigManager {
   }
 
   /**
+   * 加载JSON配置文件
+   * @param relativePath 相对于configs目录的文件路径
+   * @returns 解析后的配置对象
+   */
+  private async loadJsonConfig<T>(relativePath: string): Promise<T> {
+    const filePath = path.join(this._configDir, relativePath);
+    logger.debug("开始加载JSON配置文件", { file_path: filePath });
+
+    if (!(await fs.pathExists(filePath))) {
+      throw new CoreException(`配置文件不存在: ${filePath}`, ErrorCode.CONFIG_ERROR);
+    }
+
+    try {
+      const fileContent = await fs.readFile(filePath, "utf-8");
+      const parsedConfig = JSON.parse(fileContent) as T;
+      logger.debug("JSON配置文件加载成功", { file_path: filePath });
+      return parsedConfig;
+    } catch (error) {
+      throw new CoreException(
+        `JSON配置文件解析失败: ${filePath}, 错误: ${(error as Error).message}`,
+        ErrorCode.CONFIG_ERROR
+      );
+    }
+  }
+
+  /**
+   * 从 secrets.yaml 自动注入 LLM API Key。
+   * 支持：
+   * 1) llm.api_type 对应的主 provider api_key
+   * 2) llm.providers.<provider>.api_key
+   */
+  private async injectLLMApiKeysFromSecrets(llmConfig: {
+    api_type?: string;
+    api_key?: string;
+    providers?: Record<string, { api_key?: string }>;
+  }): Promise<void> {
+    const secretsPath = path.join(this._configDir, "secret", "secrets.yaml");
+    if (!(await fs.pathExists(secretsPath))) {
+      return;
+    }
+
+    try {
+      const secretsContent = await fs.readFile(secretsPath, "utf-8");
+      const secrets = yaml.parse(secretsContent) as {
+        providers?: Record<string, { api_key?: string }>;
+      };
+
+      const providerMap = secrets?.providers || {};
+
+      if (!llmConfig.api_key) {
+        const providerKey = String(llmConfig.api_type || "deepseek").toLowerCase();
+        const provider = providerMap[providerKey];
+        if (provider?.api_key) {
+          llmConfig.api_key = provider.api_key;
+          logger.info("已从 secrets.yaml 自动注入 LLM API Key", { provider: providerKey });
+        }
+      }
+
+      if (llmConfig.providers) {
+        for (const [providerName, providerConfig] of Object.entries(llmConfig.providers)) {
+          if (providerConfig?.api_key) {
+            continue;
+          }
+          const secretProvider = providerMap[String(providerName).toLowerCase()];
+          if (secretProvider?.api_key) {
+            providerConfig.api_key = secretProvider.api_key;
+            logger.info("已从 secrets.yaml 自动注入多 Provider API Key", { provider: providerName });
+          }
+        }
+      }
+    } catch {
+      // 忽略 secrets 解析错误，继续使用 llm.yaml 中配置
+    }
+  }
+
+  /**
    * 获取全局配置（只读）
    */
   public getConfig(): Readonly<GlobalConfig> {
@@ -236,28 +302,21 @@ export class ConfigManager {
   }
 
   /**
-   * 加载人设知识库配置
-   * @returns 人设知识库条目列表
+   * 加载知识库配置（严格JSON格式，不兼容旧YAML）
    */
-  public async loadPersonaKnowledge(): Promise<Array<{ content: string; priority: number; tags: string[] }>> {
-    // 按优先级依次尝试若干路径以适配不同版本的配置目录结构
-    const candidates = [
-      path.join(this._configDir, "python-ai/persona-knowledge.yaml"),
-      path.join(this._configDir, "oc/persona-knowledge.yaml"),
-      path.join(this._configDir, "oc/persona_knowledge.yaml"),
-    ];
-    for (const filePath of candidates) {
-      try {
-        if (!(await fs.pathExists(filePath))) continue;
-        const fileContent = await fs.readFile(filePath, "utf-8");
-        const entries = yaml.parse(fileContent);
-        return Array.isArray(entries) ? entries : [];
-      } catch {
-        // 继续尝试下一个候选路径
-      }
+  public async loadKnowledgeBaseConfig(): Promise<KnowledgeBaseConfig> {
+    const relativePath = path.join("python-ai", "knowledge-base.json");
+    const rawConfig = await this.loadJsonConfig<unknown>(relativePath);
+    const parsed = KnowledgeBaseConfigSchema.safeParse(rawConfig);
+
+    if (!parsed.success) {
+      const detail = parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ");
+      throw new CoreException(`知识库配置校验失败: ${detail}`, ErrorCode.CONFIG_ERROR);
     }
-    logger.warn("人设知识库文件未找到，使用空知识库", { candidates });
-    return [];
+
+    return parsed.data;
   }
 
   /**

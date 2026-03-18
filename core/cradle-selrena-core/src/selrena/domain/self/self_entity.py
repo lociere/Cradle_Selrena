@@ -10,6 +10,7 @@
 """
 from typing import Final
 from selrena.core.config import PersonaConfig, InferenceConfig
+from selrena.domain.conversation.scene_session import SceneSessionRuntime
 from selrena.domain.emotion.emotion_system import EmotionSystem, EmotionType
 from selrena.domain.memory.short_term_memory import ShortTermMemory
 from selrena.domain.memory.long_term_memory import LongTermMemory
@@ -84,8 +85,8 @@ class SelrenaSelfEntity:
             long_term_memory=self.long_term_memory,
             persona_config=self.persona_config
         )
-        # 短期记忆存储：key=scene_id，value=ShortTermMemory实例，按场景完全隔离
-        self._short_term_memories: Final[dict[str, ShortTermMemory]] = {}
+        # 场景运行时：会话态 + 短期记忆 + 并发锁
+        self._scene_runtimes: Final[dict[str, SceneSessionRuntime]] = {}
 
         # ======================================
         # 运行状态
@@ -120,6 +121,20 @@ class SelrenaSelfEntity:
         )
         logger.info(f"{self.persona_config.base.nickname} 已进入休眠")
 
+    def get_scene_runtime(self, scene_id: str) -> SceneSessionRuntime:
+        """获取指定场景的运行时状态，不存在则自动创建。"""
+        if scene_id not in self._scene_runtimes:
+            memory_config = self.inference_config.memory
+            short_term_max_length = max(
+                memory_config.context_limit,
+                memory_config.summary_trigger_count,
+            )
+            self._scene_runtimes[scene_id] = SceneSessionRuntime(
+                scene_id=scene_id,
+                short_term_max_length=short_term_max_length,
+            )
+        return self._scene_runtimes[scene_id]
+
     def get_short_term_memory(self, scene_id: str) -> ShortTermMemory:
         """
         获取指定场景的短期记忆，不存在则自动创建
@@ -128,15 +143,13 @@ class SelrenaSelfEntity:
         返回：对应场景的短期记忆实例
         核心作用：按场景完全隔离记忆，彻底避免串线
         """
-        if scene_id not in self._short_term_memories:
-            self._short_term_memories[scene_id] = ShortTermMemory(scene_id=scene_id)
-        return self._short_term_memories[scene_id]
+        return self.get_scene_runtime(scene_id).short_term_memory
 
     def clear_short_term_memory(self, scene_id: str) -> None:
         """清空指定场景的短期记忆，会话结束时由内核调用"""
-        if scene_id in self._short_term_memories:
-            self._short_term_memories[scene_id].clear()
-            del self._short_term_memories[scene_id]
+        if scene_id in self._scene_runtimes:
+            self._scene_runtimes[scene_id].clear()
+            del self._scene_runtimes[scene_id]
             logger.info("场景短期记忆已清空", scene_id=scene_id)
 
     def validate_boundary(self, content: str) -> bool:

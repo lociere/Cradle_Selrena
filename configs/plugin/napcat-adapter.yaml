@@ -9,13 +9,13 @@ transport:
   token_from_secrets: true
 
 main_user:
-  qq: ""
+  qq: "2674610139"
 
 ingress:
   ignore_self: true
   private_enabled: true
   group_enabled: true
-  group_policy: mention_or_wake
+  group_policy: wake_word_only
   wake_words:
     - 月见
     - Selrena
@@ -48,6 +48,11 @@ memory:
   enabled: true
   root_dir: data/memory/adapters/napcat
   max_scene_records: 80
+
+routing:
+  session_partition:
+    private: by_source
+    group: by_source
 
 runtime:
   action_timeout_ms: 15000

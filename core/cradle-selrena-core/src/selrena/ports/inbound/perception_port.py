@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from selrena.application.chat_use_case import ChatInput, ChatOutput
 from selrena.application.active_thought_use_case import ActiveThoughtInput, ActiveThoughtOutput
 from selrena.application.agent_plan_use_case import AgentPlanInput, AgentPlanOutput
+from selrena.core.contracts.kernel_ingress_contracts import KnowledgeBaseInitPayloadModel, KernelLongTermMemoryRecord
 
 
 class PerceptionPort(ABC):
@@ -21,21 +22,11 @@ class PerceptionPort(ABC):
     """
 
     @abstractmethod
-    async def on_perception_message(self, message: dict) -> ChatOutput:
+    async def on_perception_message(self, input_data: ChatInput) -> ChatOutput:
         """
         接收通用感知消息（第三方平台统一入口）
         参数：
-            message: 标准化感知消息字典
-        返回：标准化对话输出
-        """
-        pass
-
-    @abstractmethod
-    async def on_chat_message(self, input_data: ChatInput) -> ChatOutput:
-        """
-        接收对话消息
-        参数：
-            input_data: 内核传入的标准化对话输入
+            input_data: 标准化对话输入
         返回：标准化对话输出
         """
         pass
@@ -51,7 +42,7 @@ class PerceptionPort(ABC):
         pass
 
     @abstractmethod
-    async def on_memory_init(self, memories: list[dict]) -> None:
+    async def on_memory_init(self, memories: list[KernelLongTermMemoryRecord]) -> None:
         """
         接收内核注入的历史长期记忆
         参数：
@@ -60,12 +51,14 @@ class PerceptionPort(ABC):
         pass
 
     @abstractmethod
-    async def on_knowledge_init(self, persona_knowledge: list[dict], general_knowledge: list[dict]) -> None:
+    async def on_knowledge_init(
+        self,
+        knowledge_base: KnowledgeBaseInitPayloadModel,
+    ) -> None:
         """
         接收内核注入的知识库
         参数：
-            persona_knowledge: 人设知识库内容
-            general_knowledge: 通用知识库内容
+            knowledge_base: 知识库完整载荷
         """
         pass
 

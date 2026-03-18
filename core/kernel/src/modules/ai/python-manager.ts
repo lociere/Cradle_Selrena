@@ -14,11 +14,13 @@ import {
   LifeHeartbeatResponse,
   AgentPlanRequest,
   AgentPlanResponse,
+  PerceptionCancelRequest,
   PerceptionMessageRequest,
   createIPCRequest,
   createTraceContext,
   CoreException,
   ErrorCode,
+  KnowledgeInitRequest,
 } from "@cradle-selrena/protocol";
 import { ConfigManager } from "../../core/config/config-manager";
 import { IPCServer } from "../../infrastructure/ipc/ipc-server";
@@ -294,17 +296,27 @@ export class PythonAIManager {
 
   private async initKnowledge(): Promise<void> {
     logger.info("开始初始化Python AI层知识库");
-    const personaKnowledge = await ConfigManager.instance.loadPersonaKnowledge();
+    const knowledgeBaseConfig = await ConfigManager.instance.loadKnowledgeBaseConfig();
+    const payload: KnowledgeInitRequest = {
+      knowledge_base: {
+        version: knowledgeBaseConfig.version,
+        retrieval: knowledgeBaseConfig.retrieval,
+        entries: knowledgeBaseConfig.entries,
+      },
+    };
 
     const traceContext = createTraceContext();
     const request = createIPCRequest(
       IPCMessageType.KNOWLEDGE_INIT,
       traceContext.trace_id,
-      { persona_knowledge: personaKnowledge, general_knowledge: [] }
+      payload
     );
 
     await this.sendRequest(request);
-    logger.info("Python AI层知识库初始化完成", { persona_knowledge_count: personaKnowledge.length });
+    logger.info("Python AI层知识库初始化完成", {
+      knowledge_version: knowledgeBaseConfig.version,
+      knowledge_entry_count: knowledgeBaseConfig.entries.length,
+    });
   }
 
   /**
@@ -333,12 +345,12 @@ export class PythonAIManager {
     };
   }
 
-  public async sendPerceptionMessage(request: PerceptionMessageRequest): Promise<ChatMessageResponse> {
+  public async sendPerceptionMessage(request: PerceptionMessageRequest, traceId?: string): Promise<ChatMessageResponse> {
     if (!this._isReady) {
       throw new CoreException("Python AI层未就绪", ErrorCode.INFERENCE_ERROR);
     }
 
-    const traceContext = createTraceContext();
+    const traceContext = createTraceContext({ trace_id: traceId });
     const ipcRequest = createIPCRequest(
       IPCMessageType.PERCEPTION_MESSAGE,
       traceContext.trace_id,
@@ -355,6 +367,21 @@ export class PythonAIManager {
     }
 
     return response.data as ChatMessageResponse;
+  }
+
+  public async cancelPerception(request: PerceptionCancelRequest): Promise<void> {
+    if (!this._isReady) {
+      return;
+    }
+
+    const traceContext = createTraceContext();
+    const ipcRequest = createIPCRequest(
+      IPCMessageType.PERCEPTION_CANCEL,
+      traceContext.trace_id,
+      request
+    );
+
+    await IPCServer.instance.sendToLatestClient(ipcRequest);
   }
 
   public async sendAgentPlan(request: AgentPlanRequest): Promise<AgentPlanResponse> {

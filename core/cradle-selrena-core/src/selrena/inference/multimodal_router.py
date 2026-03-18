@@ -4,8 +4,10 @@
 核心作用：多模态输入编排与语义转述，不做业务流程和平台协议处理
 """
 from dataclasses import dataclass
-from typing import Any
+from typing import Iterable
 
+from selrena.core.config import InferenceConfig
+from selrena.core.contracts.kernel_ingress_contracts import ModelInputPayloadModel, PerceptionModalityItemModel
 from selrena.core.observability.logger import get_logger
 
 logger = get_logger("multimodal_router")
@@ -27,10 +29,10 @@ class MultimodalRouter:
     - 策略仅来自静态配置，不支持动态切换
     """
 
-    def __init__(self, inference_config: Any):
+    def __init__(self, inference_config: InferenceConfig):
         self._config = inference_config
 
-    def route(self, model_input: dict | None) -> MultimodalRouteResult:
+    def route(self, model_input: ModelInputPayloadModel | dict | None) -> MultimodalRouteResult:
         if not model_input:
             return MultimodalRouteResult(
                 strategy=self._config.multimodal.strategy,
@@ -68,46 +70,46 @@ class MultimodalRouter:
         logger.debug("多模态路由完成", strategy="specialist_then_core", item_count=len(items))
         return MultimodalRouteResult(strategy="specialist_then_core", primary_text=primary_text, semantic_text=semantic_text)
 
-    def _normalize_items(self, model_input: dict) -> list[dict]:
-        raw_items = list(model_input.get("items", []))
-        return raw_items[: self._config.multimodal.max_items]
+    def _normalize_items(self, model_input: ModelInputPayloadModel | dict) -> list[PerceptionModalityItemModel]:
+        payload = model_input if isinstance(model_input, ModelInputPayloadModel) else ModelInputPayloadModel.model_validate(model_input)
+        return list(payload.items)[: self._config.multimodal.max_items]
 
-    def _extract_primary_text(self, items: list[dict]) -> str:
+    def _extract_primary_text(self, items: Iterable[PerceptionModalityItemModel]) -> str:
         text_parts: list[str] = []
         for item in items:
-            if str(item.get("modality", "")) != "text":
+            if str(item.modality) != "text":
                 continue
-            text = str(item.get("text", "")).strip()
+            text = str(item.text or "").strip()
             if text:
                 text_parts.append(text)
         return "\n".join(text_parts).strip()
 
-    def _build_disabled_semantic(self, items: list[dict]) -> str:
+    def _build_disabled_semantic(self, items: list[PerceptionModalityItemModel]) -> str:
         lines = ["[多模态处理已禁用] 非文本模态将降级为占位符："]
         for index, item in enumerate(items, start=1):
-            modality = str(item.get("modality", "unknown"))
+            modality = str(item.modality)
             if modality == "text":
                 continue
-            uri = str(item.get("uri", ""))
+            uri = str(item.uri or "")
             lines.append(f"{index}. [{modality} 占位符] {uri or '无资源地址'}")
         return "\n".join(lines)
 
-    def _build_core_direct_prompt(self, items: list[dict]) -> str:
+    def _build_core_direct_prompt(self, items: list[PerceptionModalityItemModel]) -> str:
         lines = [f"[多模态直连:{self._config.multimodal.core_model}] 请直接理解以下多模态输入："]
         for index, item in enumerate(items, start=1):
-            modality = str(item.get("modality", "unknown"))
-            text = str(item.get("text", ""))
-            uri = str(item.get("uri", ""))
-            hint = str(item.get("description_hint", ""))
+            modality = str(item.modality)
+            text = str(item.text or "")
+            uri = str(item.uri or "")
+            hint = str(item.description_hint or "")
             lines.append(f"{index}. modality={modality}, text={text}, uri={uri}, hint={hint}")
         return "\n".join(lines)
 
-    def _build_specialist_then_core_prompt(self, items: list[dict]) -> str:
+    def _build_specialist_then_core_prompt(self, items: list[PerceptionModalityItemModel]) -> str:
         lines = [f"[多模态专有模型预处理后汇总] 核心模型:{self._config.multimodal.core_model}"]
         for index, item in enumerate(items, start=1):
-            modality = str(item.get("modality", "unknown"))
+            modality = str(item.modality)
             if modality == "text":
-                text = str(item.get("text", "")).strip()
+                text = str(item.text or "").strip()
                 if text:
                     lines.append(f"{index}. [文本输入] {text}")
                 continue
@@ -120,21 +122,21 @@ class MultimodalRouter:
             lines.append(f"{index}. {summary}")
         return "\n".join(lines)
 
-    def _run_image_specialist(self, item: dict) -> str:
-        uri = str(item.get("uri", ""))
-        hint = str(item.get("description_hint", ""))
+    def _run_image_specialist(self, item: PerceptionModalityItemModel) -> str:
+        uri = str(item.uri or "")
+        hint = str(item.description_hint or "")
         if not self._config.multimodal.image_model:
             return f"[图像占位符] {uri or '无资源地址'}"
         return f"[图像模型:{self._config.multimodal.image_model}] 对 {uri} 的语义摘要: {hint or '未提供提示，需自动描述主体/场景/文字信息'}"
 
-    def _run_video_specialist(self, item: dict) -> str:
-        uri = str(item.get("uri", ""))
-        hint = str(item.get("description_hint", ""))
+    def _run_video_specialist(self, item: PerceptionModalityItemModel) -> str:
+        uri = str(item.uri or "")
+        hint = str(item.description_hint or "")
         if not self._config.multimodal.video_model:
             return f"[视频占位符] {uri or '无资源地址'}"
         return f"[视频模型:{self._config.multimodal.video_model}] 对 {uri} 的语义摘要: {hint or '未提供提示，需自动提取关键帧与事件'}"
 
-    def _run_generic_specialist(self, item: dict) -> str:
-        modality = str(item.get("modality", "unknown"))
-        uri = str(item.get("uri", ""))
+    def _run_generic_specialist(self, item: PerceptionModalityItemModel) -> str:
+        modality = str(item.modality)
+        uri = str(item.uri or "")
         return f"[通用专有模型] modality={modality}, uri={uri}, 语义摘要待补充"

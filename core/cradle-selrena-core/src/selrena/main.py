@@ -196,7 +196,7 @@ def main():
       SELRENA_CONFIG / SELRENA_IPC_BIND_ADDRESS
     """
     # 解析命令行参数
-    parser = argparse.ArgumentParser(description="月见（Selrena）数字生命 Python AI 核心")
+    parser = argparse.ArgumentParser(description="月见（Selrena）Python AI 核心")
     parser.add_argument(
         "--config-json",
         type=str,
