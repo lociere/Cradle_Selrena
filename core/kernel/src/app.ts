@@ -15,18 +15,18 @@ import {
   ErrorCode,
 } from "@cradle-selrena/protocol";
 import { AppLifecycleState } from "./core/lifecycle/lifecycle-state.enum";
-import { initLogger, closeLogger, getLogger } from "./core/observability/logger";
-import { ConfigManager } from "./core/config/config-manager";
-import { EventBus } from "./core/event-bus/event-bus";
-import { DBManager } from "./infrastructure/persistence/db-manager";
-import { MemoryRepository } from "./infrastructure/persistence/repositories/memory-repository";
-import { IPCServer } from "./infrastructure/ipc/ipc-server";
-import { PythonAIManager } from "./modules/ai/python-manager";
-import { PluginManager } from "./modules/plugin/plugin-manager";
-import { ActionStreamManager } from "./modules/action-stream/action-stream-manager";
-import { LifeClockManager } from "./modules/life-clock/life-clock-manager";
-import { MemorySyncManager } from "./modules/memory/memory-sync-manager";
-import { AttentionSessionManager } from "./modules/attention/attention-session-manager";
+import { initLogger, closeLogger, getLogger } from "./core/infrastructure/logger/logger";
+import { ConfigManager } from "./core/infrastructure/config/config-manager";
+import { EventBus } from "./core/infrastructure/event-bus/event-bus";
+import { DBManager } from "./core/infrastructure/storage/db-manager";
+import { MemoryRepository } from "./core/infrastructure/storage/repositories/memory-repository";
+import { IPCServer } from "./core/infrastructure/ipc-broker/ipc-server";
+import { PythonAIManager } from "./core/application/capabilities/inference/python-manager";
+import { PluginManager } from "./core/host/plugin-manager";
+import { ActionStreamManager } from "./core/application/capabilities/action-stream/action-stream-manager";
+import { LifeClockManager } from "./core/domain/organism/life-clock/life-clock-manager";
+import { MemorySyncManager } from "./core/application/capabilities/memory/memory-sync-manager";
+import { AttentionSessionManager } from "./core/domain/attention/attention-session-manager";
 
 const logger = getLogger("app-root");
 

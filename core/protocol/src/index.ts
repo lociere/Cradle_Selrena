@@ -1,9 +1,9 @@
 // Public exports for protocol package
 
 export * from './core';
-export * from './types';
+export * from './models';
 export * from './events';
-export * from './interfaces';
+export * from './ports';
 export * from './ipc/ipc-types';
 export * from './config/schema';
 
