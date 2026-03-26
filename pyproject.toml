@@ -67,3 +67,25 @@ include = ["cradle*", "selrena*"]
 [tool.black]
 line-length = 88
 target-version = ['py310']
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+norecursedirs = [
+    "node_modules",
+    ".venv",
+    ".git",
+    "dist",
+    "build",
+    "runtime",
+    "data",
+    "logs",
+    "assets",
+    "docs",
+    "scripts",
+    "configs",
+    "plugins",
+]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

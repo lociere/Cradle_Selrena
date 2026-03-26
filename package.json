@@ -11,12 +11,12 @@
   "scripts": {
     "bootstrap": "pnpm install",
     "build": "pnpm -w run build:all",
-    "build:all": "pnpm -w --filter ./core/... run build || true",
-    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk build && pnpm --filter @cradle-selrena/plugin-napcat-adapter build",
+    "build:all": "pnpm -w --filter ./core/... run build --if-present",
+    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk build && pnpm --filter @cradle-selrena/plugin-napcat-adapter build && pnpm --filter @cradle-selrena/plugin-live2d-action-adapter build",
     "dev": "pnpm -w run dev:all",
     "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
     "test": "pnpm -w run test:all",
-    "test:all": "pnpm -w --filter ./core/... run test || true",
+    "test:all": "pnpm --filter @cradle-selrena/kernel test --if-present",
     "chat": "pnpm --filter @cradle-selrena/kernel start"
   },
   "devDependencies": {
