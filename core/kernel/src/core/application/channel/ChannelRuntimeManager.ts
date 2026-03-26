@@ -1,4 +1,4 @@
-import { getLogger } from "../../infrastructure/logger/logger";
+import { getLogger } from "../../foundation/logger/logger";
 import { PerceptionMessageRequest } from "@cradle-selrena/protocol";
 
 const logger = getLogger("channel-runtime");
@@ -16,7 +16,7 @@ export class ChannelRuntimeManager {
   }
 
   public async handleInboundMessage(req: PerceptionMessageRequest): Promise<void> {
-    logger.info(`Received inbound message: ${req.source.source_id} from ${req.source.source_type}`);
+    logger.info(`Received inbound message: ${req.id} from ${req.source}`);
     // Here we will hook into SelrenaAttentionPolicy or PerceptionSessionManager
   }
 }

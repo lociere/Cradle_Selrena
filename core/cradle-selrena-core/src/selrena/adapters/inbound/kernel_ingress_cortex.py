@@ -17,7 +17,7 @@ from selrena.core.contracts.kernel_ingress_contracts import (
     KnowledgeInitPayloadModel,
     LifeHeartbeatPayloadModel,
     MemoryInitPayloadModel,
-    PerceptionMessagePayloadModel,
+    PerceptionEventPayloadModel,
 )
 
 
@@ -26,11 +26,11 @@ class KernelIngressCortex:
 
     def parse_perception_message(self, message: dict) -> ChatInput:
         envelope = KernelMessageEnvelope.model_validate(message)
-        payload = PerceptionMessagePayloadModel.model_validate(envelope.payload)
+        payload = PerceptionEventPayloadModel.model_validate(envelope.payload)
         return ChatInput(
-            model_input=payload.input.model_dump(),
-            scene_id=payload.scene_id,
-            familiarity=payload.familiarity,
+            model_input=payload.content.model_dump(),
+            scene_id=payload.source,
+            familiarity=0,
             trace_id=envelope.trace_id,
         )
 

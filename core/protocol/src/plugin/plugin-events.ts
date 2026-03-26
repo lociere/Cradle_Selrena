@@ -3,17 +3,18 @@
  */
 import { DomainEvent } from "../events/domain-events";
 import { TraceContext } from "../core";
+import type { ChannelReplyPayload } from "./sdk";
 
 export interface PluginEventPayload {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export abstract class PluginEvent extends DomainEvent {
   public readonly event_type: string;
-  public readonly payload: PluginEventPayload;
+  public readonly payload: unknown;
   public readonly trace_context: TraceContext;
 
-  constructor(event_type: string, payload: PluginEventPayload = {}, trace_context?: TraceContext, occurredAt?: number) {
+  constructor(event_type: string, payload: unknown = {}, trace_context?: TraceContext, occurredAt?: number) {
     super(occurredAt);
     this.event_type = event_type;
     this.payload = payload;
@@ -48,5 +49,17 @@ export class PluginUnloadedEvent extends PluginEvent {
 export class PluginErrorEvent extends PluginEvent {
   constructor(payload: PluginEventPayload = {}, trace_context?: TraceContext) {
     super("PluginErrorEvent", payload, trace_context);
+  }
+}
+
+/**
+ * Soul 层向 Vessel 层下发回复指令的领域事件。
+ * 通过全局 EventBus 发布，Vessel 适配器订阅后执行出站发送。
+ */
+export class ChannelReplyEvent extends PluginEvent {
+  declare readonly payload: ChannelReplyPayload;
+
+  constructor(payload: ChannelReplyPayload, trace_context?: TraceContext) {
+    super("action.channel.reply", payload, trace_context);
   }
 }

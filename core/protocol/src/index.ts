@@ -10,3 +10,4 @@ export * from './config/schema';
 // Plugin system exports
 export * from './plugin/plugin-manifest.schema';
 export * from './plugin/plugin-events';
+export * from './plugin/sdk';

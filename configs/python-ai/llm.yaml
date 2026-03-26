@@ -18,19 +18,19 @@ temperature: 0.7
 # 可选：多 Provider 配置（用于多模型分工，例如多模态专有模型）
 # 注意：api_key 建议留空，由 configs/secret/secrets.yaml 的 providers.<name>.api_key 自动注入。
 providers:
-	deepseek:
-		api_type: "deepseek"
-		api_key: ""
-		base_url: "https://api.deepseek.com"
-		model: "deepseek-chat"
-		temperature: 0.7
-	qwen:
-		# 千问使用 OpenAI 兼容接口
-		api_type: "openai"
-		api_key: ""
-		base_url: "https://dashscope.aliyuncs.com/compatible-mode"
-		model: "qwen3.5-plus"
-		temperature: 0.7
+  deepseek:
+    api_type: "deepseek"
+    api_key: ""
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-chat"
+    temperature: 0.7
+  qwen:
+    # 千问使用 OpenAI 兼容接口
+    api_type: "openai"
+    api_key: ""
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode"
+    model: "qwen3.5-plus"
+    temperature: 0.7
 
 # 可选：自定义请求结构（对接不同云端模型服务时可灵活配置）
 # request_method: "POST"

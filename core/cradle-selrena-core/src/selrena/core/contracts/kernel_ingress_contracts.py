@@ -19,29 +19,22 @@ class KernelMessageEnvelope(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class PerceptionModalityItemModel(BaseModel):
-    """多模态单项输入。"""
+class PerceptionEventContentModel(BaseModel):
+    """感知事件核心内容模型。"""
 
-    modality: str
     text: str | None = None
-    uri: str | None = None
-    mime_type: str | None = None
-    description_hint: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    raw: Any | None = None
+    modality: list[str] = Field(default_factory=list)
 
 
-class ModelInputPayloadModel(BaseModel):
-    """标准模型输入。"""
+class PerceptionEventPayloadModel(BaseModel):
+    """新版感知消息载荷。"""
 
-    items: list[PerceptionModalityItemModel] = Field(default_factory=list)
-
-
-class PerceptionMessagePayloadModel(BaseModel):
-    """感知消息载荷。"""
-
-    input: ModelInputPayloadModel = Field(default_factory=ModelInputPayloadModel)
-    scene_id: str = "default"
-    familiarity: int = 0
+    id: str
+    sensoryType: str
+    source: str
+    timestamp: float
+    content: PerceptionEventContentModel
 
 
 class LifeHeartbeatPayloadModel(BaseModel):

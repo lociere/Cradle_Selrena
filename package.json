@@ -3,29 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
     "ws": "^8.18.3",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.1",
+    "zod": "^3.23.0"
   },
   "scripts": {
     "bootstrap": "pnpm install",
     "build": "pnpm -w run build:all",
     "build:all": "pnpm -w --filter ./core/... run build || true",
+    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk build && pnpm --filter @cradle-selrena/plugin-napcat-adapter build",
     "dev": "pnpm -w run dev:all",
     "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
     "test": "pnpm -w run test:all",
     "test:all": "pnpm -w --filter ./core/... run test || true",
-    "nx": "nx",
-    "nx:graph": "nx graph",
-    "nx:dev": "nx run-many --target=dev --parallel --projects=kernel,renderer",
-    "nx:start": "nx run-many --target=start --parallel --projects=kernel,renderer",
-    "nx:build": "nx run-many --target=build --parallel --projects=kernel,renderer",
-    "nx:test": "nx run-many --target=test --parallel --projects=kernel,cradle-selrena-core",
     "chat": "pnpm --filter @cradle-selrena/kernel start"
   },
   "devDependencies": {
+    "@types/ws": "^8.5.14",
     "concurrently": "^8.0.0",
-    "nx": "^16.0.0",
-    "@nx/workspace": "^16.0.0",
     "pnpm": "^9.15.9"
   }
 }

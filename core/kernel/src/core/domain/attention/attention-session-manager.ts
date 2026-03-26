@@ -1,17 +1,11 @@
-import {
-  ChatMessageResponse,
-  createTraceContext,
-  PerceptionCancelRequest,
-  PerceptionMessageRequest,
-  PerceptionModalityItem,
-} from "@cradle-selrena/protocol";
-import { ConfigManager } from "../../infrastructure/config/config-manager";
-import { getLogger } from "../../infrastructure/logger/logger";
-import { AIProxy } from "../../application/capabilities/inference/ai-proxy";
-import { ActionStreamManager } from "../../application/capabilities/action-stream/action-stream-manager";
-import { LifeClockManager } from "../organism/life-clock/life-clock-manager";
+import { ChatMessageResponse, createTraceContext, PerceptionCancelRequest, PerceptionMessageRequest } from '@cradle-selrena/protocol';
+import { ConfigManager } from '../../foundation/config/config-manager';
+import { getLogger } from '../../foundation/logger/logger';
+import { AIProxy } from '../../application/capabilities/inference/ai-proxy';
+import { ActionStreamManager } from '../../application/capabilities/action-stream/action-stream-manager';   
+import { LifeClockManager } from '../organism/life-clock/life-clock-manager';
 
-const logger = getLogger("attention-session-manager");
+const logger = getLogger('attention-session-manager');
 
 type PendingIngress = {
   request: PerceptionMessageRequest;
@@ -54,7 +48,7 @@ export class AttentionSessionManager {
     this._maxBatchItems = lifeClock.ingress_max_batch_items;
     this._initialized = true;
 
-    logger.info("注意力会话管理器初始化完成", {
+    logger.info('注意力会话管理器初始化完成', {
       ingress_debounce_ms: this._debounceMs,
       ingress_focused_debounce_ms: this._focusedDebounceMs,
       ingress_max_batch_messages: this._maxBatchMessages,
@@ -67,32 +61,32 @@ export class AttentionSessionManager {
       this.init();
     }
 
-    const sceneId = String(request.scene_id || "default").trim() || "default";
-    const state = this.getSceneState(sceneId);
-    this.tryInterruptInFlight(sceneId, state);
+    const source = String(request.source || 'default').trim() || 'default';
+    const state = this.getSceneState(source);
+    this.tryInterruptInFlight(source, state);
     this.onIngressMessage(request);
 
     return new Promise<ChatMessageResponse | null>((resolve, reject) => {
       state.pending.push({ request, resolve, reject });
-      this.scheduleFlush(sceneId, state);
+      this.scheduleFlush(source, state);
     });
   }
 
   public stop(): void {
-    for (const [sceneId, state] of this._sceneStates.entries()) {
+    for (const [source, state] of this._sceneStates.entries()) {
       if (state.timer) {
         clearTimeout(state.timer);
       }
       for (const pending of state.pending) {
-        pending.reject(new Error("Attention session manager stopped"));
+        pending.reject(new Error('Attention session manager stopped'));
       }
-      logger.debug("注意力会话状态已清理", { scene_id: sceneId });
+      logger.debug('注意力会话状态已清理', { scene_id: source });
     }
     this._sceneStates.clear();
   }
 
-  private getSceneState(sceneId: string): SceneIngressState {
-    const existing = this._sceneStates.get(sceneId);
+  private getSceneState(source: string): SceneIngressState {
+    const existing = this._sceneStates.get(source);
     if (existing) {
       return existing;
     }
@@ -104,28 +98,19 @@ export class AttentionSessionManager {
       inFlightTraceId: null,
       cancelRequested: false,
     };
-    this._sceneStates.set(sceneId, created);
+    this._sceneStates.set(source, created);
     return created;
   }
 
   private onIngressMessage(request: PerceptionMessageRequest): void {
-    const textChunks: string[] = [];
-    for (const item of request.input?.items || []) {
-      if (item.modality !== "text") {
-        continue;
-      }
-      const text = String(item.text || "").trim();
-      if (text) {
-        textChunks.push(text);
-      }
-    }
+    const text = String(request.content?.text || '').trim();
     LifeClockManager.instance.onUserMessage(
-      textChunks.join(" "),
-      String(request.source?.source_type || "unknown"),
+      text,
+      String(request.source || 'unknown'),
     );
   }
 
-  private scheduleFlush(sceneId: string, state: SceneIngressState): void {
+  private scheduleFlush(source: string, state: SceneIngressState): void {
     if (state.timer) {
       clearTimeout(state.timer);
       state.timer = null;
@@ -135,54 +120,52 @@ export class AttentionSessionManager {
     state.timer = setTimeout(() => {
       state.timer = null;
       state.chain = state.chain
-        .then(() => this.flushScene(sceneId, state))
+        .then(() => this.flushScene(source, state))
         .catch((error: unknown) => {
-          logger.error("注意力场景刷新失败", {
-            scene_id: sceneId,
+          logger.error('注意力场景刷新失败', {
+            scene_id: source,
             error: error instanceof Error ? error.message : String(error),
           });
         });
     }, debounceMs);
   }
 
-  private tryInterruptInFlight(sceneId: string, state: SceneIngressState): void {
+  private tryInterruptInFlight(source: string, state: SceneIngressState): void {
     if (!state.inFlightTraceId || state.cancelRequested) {
       return;
     }
 
     state.cancelRequested = true;
     const cancelRequest: PerceptionCancelRequest = {
-      scene_id: sceneId,
+      scene_id: source,
       target_trace_id: state.inFlightTraceId,
-      reason: "new_ingress_interrupt",
+      reason: 'new_ingress_interrupt',
     };
 
-    void ActionStreamManager.instance.cancelStream(sceneId, state.inFlightTraceId, "new_ingress_interrupt").catch(() => {
-      // 动作流取消失败不影响主链路
-    });
+    void ActionStreamManager.instance.cancelStream(source, state.inFlightTraceId, 'new_ingress_interrupt').catch(() => {});
 
     void AIProxy.instance.cancelPerception(cancelRequest).catch((error: unknown) => {
-      logger.warn("发送生成中断请求失败", {
-        scene_id: sceneId,
+      logger.warn('发送生成中断请求失败', {
+        scene_id: source,
         target_trace_id: state.inFlightTraceId,
         error: error instanceof Error ? error.message : String(error),
       });
     });
-    logger.info("已触发生成中断请求", {
-      scene_id: sceneId,
+    logger.info('已触发生成中断请求', {
+      scene_id: source,
       target_trace_id: state.inFlightTraceId,
     });
   }
 
   private resolveDebounceMs(): number {
     const mode = LifeClockManager.instance.state.mode;
-    if (mode === "focused") {
+    if (mode === 'focused') {
       return this._focusedDebounceMs;
     }
     return this._debounceMs;
   }
 
-  private async flushScene(sceneId: string, state: SceneIngressState): Promise<void> {
+  private async flushScene(source: string, state: SceneIngressState): Promise<void> {
     const queue = state.pending.splice(0, state.pending.length);
     if (queue.length === 0) {
       return;
@@ -194,45 +177,44 @@ export class AttentionSessionManager {
     }
 
     const batch = queue.slice(overflowCount);
-    const mergedRequest = this.mergeRequests(batch.map((entry) => entry.request), sceneId);
+    const mergedRequest = this.mergeRequests(batch.map((entry) => entry.request), source);
     const traceId = createTraceContext().trace_id;
     state.inFlightTraceId = traceId;
     state.cancelRequested = false;
 
     await ActionStreamManager.instance.startThinkingStream(
-      sceneId,
+      source,
       traceId,
-      String(mergedRequest.source?.source_type || "unknown"),
+      String(mergedRequest.source || 'unknown'),
     );
 
     try {
-      const response = await AIProxy.instance.sendPerceptionMessage(mergedRequest, traceId);
+      const response = await AIProxy.instance.sendPerceptionMessage(mergedRequest as any, traceId);
       for (let index = 0; index < batch.length - 1; index += 1) {
         batch[index].resolve(null);
       }
       batch[batch.length - 1].resolve(response);
-      logger.debug("注意力批次完成", {
-        scene_id: sceneId,
+      logger.debug('注意力批次完成', {
+        scene_id: source,
         batch_size: batch.length,
-        merged_item_count: mergedRequest.input.items.length,
       });
       await ActionStreamManager.instance.completeStream(
-        sceneId,
+        source,
         traceId,
-        String(response?.emotion_state?.emotion_type || "calm"),
-        String(response?.reply_content || "").length,
+        String(response?.emotion_state?.emotion_type || 'calm'),
+        String(response?.reply_content || '').length,
       );
     } catch (error) {
       for (const entry of batch) {
         entry.reject(error);
       }
-      logger.error("注意力批次失败", {
-        scene_id: sceneId,
+      logger.error('注意力批次失败', {
+        scene_id: source,
         batch_size: batch.length,
         trace_id: traceId,
         error: error instanceof Error ? error.message : String(error),
       });
-      await ActionStreamManager.instance.cancelStream(sceneId, traceId, "generation_failed");
+      await ActionStreamManager.instance.cancelStream(source, traceId, 'generation_failed');
     } finally {
       if (state.inFlightTraceId === traceId) {
         state.inFlightTraceId = null;
@@ -241,29 +223,26 @@ export class AttentionSessionManager {
     }
   }
 
-  private mergeRequests(requests: PerceptionMessageRequest[], sceneId: string): PerceptionMessageRequest {
+  private mergeRequests(requests: PerceptionMessageRequest[], source: string): PerceptionMessageRequest {  
     const tail = requests[requests.length - 1];
-    const mergedItems: PerceptionModalityItem[] = [];
-
-    for (const request of requests) {
-      for (const item of request.input?.items || []) {
-        if (mergedItems.length >= this._maxBatchItems) {
-          break;
-        }
-        mergedItems.push(item);
-      }
-      if (mergedItems.length >= this._maxBatchItems) {
-        break;
-      }
+    
+    const texts = requests.map(r => r.content?.text).filter(Boolean);
+    const mergedText = texts.join(' ');
+    const modalities = new Set<string>();
+    for (const r of requests) {
+      r.content?.modality?.forEach(m => modalities.add(m));
     }
 
     return {
-      input: {
-        items: mergedItems.length > 0 ? mergedItems : tail.input.items,
-      },
-      scene_id: sceneId,
-      familiarity: Math.max(...requests.map((item) => Number(item.familiarity || 0))),
+      id: tail.id,
+      sensoryType: tail.sensoryType,
       source: tail.source,
+      timestamp: tail.timestamp,
+      content: {
+        text: mergedText || undefined,
+        raw: tail.content?.raw,
+        modality: Array.from(modalities),
+      }
     };
   }
 }

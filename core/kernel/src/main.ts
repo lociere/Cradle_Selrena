@@ -3,7 +3,7 @@
  * 应用启动的根文件，处理信号监听、异常捕获、优雅停机
  */
 import { App } from "./app";
-import { getLogger } from "./core/infrastructure/logger/logger";
+import { getLogger } from "./core/foundation/logger/logger";
 
 const logger = getLogger("main");
 

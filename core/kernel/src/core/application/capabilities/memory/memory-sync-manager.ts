@@ -5,14 +5,14 @@ import {
   ShortTermMemorySyncEvent,
   LongTermMemoryFragment,
 } from "@cradle-selrena/protocol";
-import { getLogger } from "../../../infrastructure/logger/logger";
-import { EventBus } from "../../../infrastructure/event-bus/event-bus";
+import { getLogger } from "../../../foundation/logger/logger";
+import { EventBus } from "../../../foundation/event-bus/event-bus";
 import {
   MemoryRepository,
   ShortTermMemoryFragmentRecord,
-} from "../../../infrastructure/storage/repositories/memory-repository";
-import { ConfigManager } from "../../../infrastructure/config/config-manager";
-import { resolveDataDir } from "../../../infrastructure/utils/path-utils";
+} from "../../../foundation/storage/repositories/memory-repository";
+import { ConfigManager } from "../../../foundation/config/config-manager";
+import { resolveDataDir } from "../../../foundation/utils/path-utils";
 
 const logger = getLogger("memory-sync-manager");
 

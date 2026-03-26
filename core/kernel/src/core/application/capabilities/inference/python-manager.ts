@@ -22,11 +22,11 @@ import {
   ErrorCode,
   KnowledgeInitRequest,
 } from "@cradle-selrena/protocol";
-import { ConfigManager } from "../../../infrastructure/config/config-manager";
+import { ConfigManager } from "../../../foundation/config/config-manager";
 import { IPCServer } from "../../../infrastructure/ipc-broker/ipc-server";
-import { MemoryRepository } from "../../../infrastructure/storage/repositories/memory-repository";
-import { getLogger } from "../../../infrastructure/logger/logger";
-import { resolveRepoRoot, resolveLogDir } from "../../../infrastructure/utils/path-utils";
+import { MemoryRepository } from "../../../foundation/storage/repositories/memory-repository";
+import { getLogger } from "../../../foundation/logger/logger";
+import { resolveRepoRoot, resolveLogDir } from "../../../foundation/utils/path-utils";
 
 const logger = getLogger("python-manager");
 

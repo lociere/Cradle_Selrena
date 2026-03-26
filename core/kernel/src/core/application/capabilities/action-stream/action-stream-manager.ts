@@ -6,9 +6,9 @@ import {
   ActionFramePayload,
   createTraceContext,
 } from "@cradle-selrena/protocol";
-import { ConfigManager } from "../../../infrastructure/config/config-manager";
-import { EventBus } from "../../../infrastructure/event-bus/event-bus";
-import { getLogger } from "../../../infrastructure/logger/logger";
+import { ConfigManager } from "../../../foundation/config/config-manager";
+import { EventBus } from "../../../foundation/event-bus/event-bus";
+import { getLogger } from "../../../foundation/logger/logger";
 
 const logger = getLogger("action-stream-manager");
 

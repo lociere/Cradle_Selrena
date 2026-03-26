@@ -15,18 +15,24 @@ import {
   ErrorCode,
 } from "@cradle-selrena/protocol";
 import { AppLifecycleState } from "./core/lifecycle/lifecycle-state.enum";
-import { initLogger, closeLogger, getLogger } from "./core/infrastructure/logger/logger";
-import { ConfigManager } from "./core/infrastructure/config/config-manager";
-import { EventBus } from "./core/infrastructure/event-bus/event-bus";
-import { DBManager } from "./core/infrastructure/storage/db-manager";
-import { MemoryRepository } from "./core/infrastructure/storage/repositories/memory-repository";
+import { initLogger, closeLogger, getLogger } from "./core/foundation/logger/logger";
+import { ConfigManager } from "./core/foundation/config/config-manager";
+import { EventBus } from "./core/foundation/event-bus/event-bus";
+import { DBManager } from "./core/foundation/storage/db-manager";
+import { MemoryRepository } from "./core/foundation/storage/repositories/memory-repository";
 import { IPCServer } from "./core/infrastructure/ipc-broker/ipc-server";
 import { PythonAIManager } from "./core/application/capabilities/inference/python-manager";
 import { PluginManager } from "./core/host/plugin-manager";
+import { PluginHostAppService } from "./core/application/services/plugin-host-app.service";
 import { ActionStreamManager } from "./core/application/capabilities/action-stream/action-stream-manager";
 import { LifeClockManager } from "./core/domain/organism/life-clock/life-clock-manager";
 import { MemorySyncManager } from "./core/application/capabilities/memory/memory-sync-manager";
 import { AttentionSessionManager } from "./core/domain/attention/attention-session-manager";
+import { PerceptionAppService } from "./core/application/services/perception-app.service";
+import { SceneRoutingManager } from "./core/application/capabilities/scene/scene-routing-manager";
+import { PluginSceneTranscriptService } from "./core/application/capabilities/scene/plugin-scene-transcript-service";
+import { AudioService } from "./core/application/capabilities/audio/audio-service";
+import { ChannelRuntimeManager } from "./core/application/channel/ChannelRuntimeManager";
 
 const logger = getLogger("app-root");
 
@@ -38,6 +44,7 @@ export class App {
   private static _instance: App | null = null;
   private _state: AppLifecycleState = AppLifecycleState.UNINITIALIZED;
   private _startupTimeMs: number = 0;
+  private _pluginManager: PluginManager | null = null;
 
   /**
    * 获取单例实例
@@ -148,8 +155,18 @@ export class App {
       // 步骤6：初始化插件管理器，加载插件
       // ======================================
       const pluginStart = Date.now();
-      await PluginManager.instance.init();
-      await PluginManager.instance.startAllPlugins();
+      const perceptionAppService = new PerceptionAppService(
+        SceneRoutingManager.instance,
+        PluginSceneTranscriptService.instance,
+        AudioService.instance,
+        ChannelRuntimeManager.instance,
+        AttentionSessionManager.instance
+      );
+      const pluginHostService = new PluginHostAppService(perceptionAppService);
+      const pluginManager = new PluginManager(pluginHostService);
+      this._pluginManager = pluginManager;
+      await pluginManager.init();
+      await pluginManager.startAllPlugins();
       const pluginStartupTime = Date.now() - pluginStart;
       await EventBus.instance.publish(
         new ModuleStartedEvent({
@@ -276,7 +293,9 @@ export class App {
       logger.info("动作流管理器已停止");
 
       // 4. 停止插件管理器
-      await PluginManager.instance.shutdown();
+      if (this._pluginManager) {
+        await this._pluginManager.shutdown();
+      }
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "plugin-manager",
       }, stopTraceContext));

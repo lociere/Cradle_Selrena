@@ -6,8 +6,8 @@ import {
   TTSSynthesizeRequest,
   TTSSynthesizeResponse,
 } from "@cradle-selrena/protocol";
-import { getLogger } from "../../../infrastructure/logger/logger";
-import { resolveRepoRoot } from "../../../infrastructure/utils/path-utils";
+import { getLogger } from "../../../foundation/logger/logger";
+import { resolveRepoRoot } from "../../../foundation/utils/path-utils";
 
 const logger = getLogger("audio-service");
 

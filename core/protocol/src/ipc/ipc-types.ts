@@ -125,11 +125,15 @@ export interface ModelInputPayload {
  * 通用感知消息：第三方平台接入统一走该类型。
  */
 export interface PerceptionMessageRequest {
-  input: ModelInputPayload;
-  scene_id: string;
-  familiarity?: number;
-  source: MessageSourceMeta;
-  routing?: SceneRoutingHint;
+  id: string;
+  sensoryType: string;
+  source: string;
+  timestamp: number;
+  content: {
+    text?: string;
+    raw?: any;
+    modality: string[];
+  };
 }
 
 export interface PerceptionCancelRequest {

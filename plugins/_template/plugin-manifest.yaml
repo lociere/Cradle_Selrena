@@ -1,0 +1,52 @@
+# ════════════════════════════════════════════
+# 插件清单 — plugin-manifest.yaml
+#
+# 每个插件的声明文件，由 PluginManager 在加载时验证。
+# 字段说明：
+#   id            唯一标识，必须与目录名完全一致，仅允许 [a-z0-9-]
+#   name          人类可读的显示名称
+#   version       语义化版本 x.y.z
+#   author        作者
+#   description   功能描述（一句话）
+#   category      插件分类: adapter | tool | sense | action | ui
+#   main          入口文件（编译产物），固定为 dist/index.js
+#   minAppVersion 最低兼容的 App 版本
+#   permissions   所需权限列表（仅声明必要权限，遵循最小权限原则）
+# ════════════════════════════════════════════
+
+id: my-plugin               # 必须与目录名一致
+name: My Plugin             # 显示名称
+version: 0.1.0
+author: Your Name
+description: 一句话描述插件的功能
+main: dist/index.js         # 编译产物入口，不要修改
+minAppVersion: 0.1.0
+
+# tags: 自由标签，描述插件的角色与特性，可叠加任意组合，内核不做功能约束。
+# 常见参考标签（非枚举，按需自取/自创）：
+#   adapter      平台接入适配器（如 QQ、Discord、Minecraft）
+#   tool         工具调用 / MCP 工具提供者
+#   sense        主动感知推送（如定时推送天气、提醒）
+#   action       主动出站操作（如发消息、控制设备）
+#   websocket    使用 WebSocket 通信
+#   http         使用 HTTP 通信
+#   schedule     包含定时任务
+#   memory       涉及记忆读写
+#   audio        涉及语音处理（ASR/TTS）
+#   multimodal   涉及图片/视频等多模态
+tags:
+  - tool
+
+permissions:
+  # 选择所需权限（只声明真正需要的）：
+  # - PERCEPTION_WRITE    向 Soul 注入感知事件
+  # - EVENT_SUBSCRIBE     订阅全局事件总线
+  # - EVENT_PUBLISH       发布自定义事件（仅允许 plugin.<id>.* 命名空间）
+  # - CONFIG_READ_SELF    读取自身配置文件
+  # - CHAT_SEND           发送聊天消息
+  # - NATIVE_AUDIO_ASR    调用 ASR 语音识别
+  # - NATIVE_AUDIO_TTS    调用 TTS 语音合成
+  # - AGENT_REGISTER      注册子代理 (Sub-Agent)
+  # - MEMORY_READ         读取记忆
+  # - MEMORY_WRITE        写入记忆
+  - CONFIG_READ_SELF

@@ -7,7 +7,7 @@ name = "cradle-selrena"
 version = "0.1.0"
 description = "Cradle_Selrena: 摇篮：月见 — 多模态智能代理框架"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12, <=3.12.99"
 license = { text = "MIT" }
 keywords = ["AI","assistant","napcat","vector-store","chatbot"]
 classifiers = [
@@ -39,8 +39,12 @@ dependencies = [
     "soundfile",         # Essential for librosa audio processing
     "chromadb",          # Vector Store
     "sentence-transformers", # Text Embedding
-    "llama-cpp-python>=0.3.16 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124", # Force GPU version
+    "llama-cpp-python>=0.3.16",
+    "structlog>=25.5.0",
+    "pyzmq>=27.1.0",
 ]
+
+
 
 # optional groups (extras) can be added as needed
 [project.optional-dependencies]
@@ -57,8 +61,8 @@ dev = [
 cradle = "cradle.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["cradle*"]
+where = ["core/cradle-selrena-core/src"]
+include = ["cradle*", "selrena*"]
 
 [tool.black]
 line-length = 88

@@ -3,9 +3,16 @@
  * 驱动月见的主动思维，实现「活着」的核心特性
  * 按配置的间隔发送心跳给Python AI层，触发主动思维生成
  */
-import { ConfigManager } from "../../../infrastructure/config/config-manager";
+import { ConfigManager } from "../../../foundation/config/config-manager";
 import { AIProxy } from "../../../application/capabilities/inference/ai-proxy";
-import { getLogger } from "../../../infrastructure/logger/logger";
+import { getLogger } from "../../../foundation/logger/logger";
+import { EventBus } from "../../../foundation/event-bus/event-bus";
+import {
+  SceneAttentionChangedEvent,
+  OrganismAttentionChangedEvent,
+  OrganismAttentionMode,
+  createTraceContext,
+} from "@cradle-selrena/protocol";
 import { AttentionTrigger, AttentionTriggerResult } from "./triggers/attention-trigger";
 import { WakeKeywordTrigger } from "./triggers/wake-keyword-trigger";
 
@@ -46,6 +53,7 @@ export class LifeClockManager {
     system: "ignore",
     unknown: "chat_or_wake_focus_with_timeout",
   };
+  private readonly _channelFocusStates: Map<string, boolean> = new Map();
   private readonly _triggers: Map<string, AttentionTrigger> = new Map();
 
   /**
@@ -80,6 +88,13 @@ export class LifeClockManager {
       ...(lifeClock.source_focus_policies || {}),
     };
     this.ensureDefaultTriggers();
+
+    // 订阅频道场景注意力变更事件，更新有机体状态
+    EventBus.instance.subscribe('SceneAttentionChangedEvent', async (event) => {
+      const e = event as SceneAttentionChangedEvent;
+      this._channelFocusStates.set(e.channelId, e.focused);
+      this._updateOrganismAttention();
+    });
 
     logger.info("生命时钟管理器初始化完成", {
       focused_interval_ms: this._focusedIntervalMs,
@@ -268,6 +283,29 @@ export class LifeClockManager {
       isRunning: this._isRunning,
       mode: this._mode,
     };
+  }
+
+  /**
+   * 根据各频道聚焦状态计算并发布有机体注意力变化事件
+   */
+  private _updateOrganismAttention(): void {
+    const focusedChannels = Array.from(this._channelFocusStates.entries())
+      .filter(([, focused]) => focused)
+      .map(([channelId]) => channelId);
+
+    const mode: OrganismAttentionMode =
+      focusedChannels.length > 0
+        ? 'ACTIVE'
+        : this._mode === 'ambient'
+        ? 'PASSIVE'
+        : 'IDLE';
+
+    EventBus.instance.publish(
+      new OrganismAttentionChangedEvent(
+        { mode, focusedChannels },
+        createTraceContext()
+      )
+    );
   }
 
   /**

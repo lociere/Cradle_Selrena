@@ -1,286 +1,154 @@
-/**
- * 插件管理器
- * 负责插件的加载、初始化、启动、停止、卸载、沙箱隔离、权限管控
- */
 import path from "path";
 import fs from "fs-extra";
 import yaml from "yaml";
 import {
-  IBasePlugin,
-  PluginManifest,
-  PluginManifestSchema,
+  IPluginHostService,
+  IDisposable,
+  IPluginLogger,
+  ExtensionContext,
+  SystemPlugin,
   Permission,
-  PluginException,
-  ErrorCode,
+  hasPermission,
+  PluginManifestSchema,
+  PluginManifest,
   PluginLoadedEvent,
   PluginStartedEvent,
   PluginStoppedEvent,
   PluginErrorEvent,
+  PluginException,
+  ErrorCode,
   createTraceContext,
+  PluginSystemEventTopics,
 } from "@cradle-selrena/protocol";
-import { ConfigManager } from "../infrastructure/config/config-manager";
-import { KernelProxyImpl } from "./bridge-impl/kernel-proxy-impl";
-import { EventBus } from "../infrastructure/event-bus/event-bus";
-import { getLogger } from "../infrastructure/logger/logger";
-import { resolveRepoRoot } from "../infrastructure/utils/path-utils";
 
-const logger = getLogger("plugin-manager");
+type PluginManifestLite = {
+  id: string;
+  name: string;
+  version: string;
+  main: string;
+  minAppVersion: string;
+  permissions: Permission[];
+};
 
-/**
- * 插件实例包装类
- * 存储插件的完整信息、实例、代理、运行状态
- */
 interface PluginInstance {
-  manifest: PluginManifest;
-  plugin: IBasePlugin;
-  proxy: KernelProxyImpl;
+  manifest: PluginManifestLite;
+  plugin: SystemPlugin;
+  context: ExtensionContext;
   isRunning: boolean;
 }
 
-/**
- * 插件管理器
- * 单例模式
- */
+const PLUGIN_SUBSCRIBE_TOPICS = new Set<string>(Object.values(PluginSystemEventTopics));
+
 export class PluginManager {
-  private static _instance: PluginManager | null = null;
   private _pluginRootDir: string = path.resolve(process.cwd(), "plugins");
   private _plugins: Map<string, PluginInstance> = new Map();
-  private _isInitialized: boolean = false;
-  private _isShuttingDown: boolean = false;
-  private _pluginTimeoutMs: number = 5000;
+  private _isInitialized = false;
+  private _isShuttingDown = false;
+  private _pluginTimeoutMs = 5000;
+  private readonly _logger: IPluginLogger;
 
-  /**
-   * 获取单例实例
-   */
-  public static get instance(): PluginManager {
-    if (!PluginManager._instance) {
-      PluginManager._instance = new PluginManager();
-    }
-    return PluginManager._instance;
+  constructor(private readonly _hostService: IPluginHostService) {
+    this._logger = _hostService.createLogger("plugin-manager");
   }
 
-  private constructor() {}
-
-  /**
-   * 初始化插件管理器，加载所有启用的插件
-   */
   public async init(): Promise<void> {
     if (this._isInitialized) {
-      logger.warn("插件管理器已初始化，跳过重复初始化");
+      this._logger.warn("插件管理器已初始化，跳过重复初始化");
       return;
     }
 
-    logger.info("开始初始化插件管理器");
-    const config = ConfigManager.instance.getConfig();
-    // 插件根目录相对于仓库根（而非 process.cwd()），与 configs/kernel/plugin.yaml 的语义一致
-    this._pluginRootDir = path.resolve(resolveRepoRoot(), config.plugin.plugin_root_dir);
+    const config = this._hostService.getConfig();
+    this._pluginRootDir = path.resolve(this._hostService.getRepoRoot(), config.plugin.plugin_root_dir);
     this._pluginTimeoutMs = config.plugin.sandbox.timeout_ms;
 
-    try {
-      // 确保插件根目录存在
-      await fs.ensureDir(this._pluginRootDir);
-      // 加载启用的插件列表
-      const enabledPlugins = await ConfigManager.instance.loadEnabledPlugins();
-      logger.info("读取到启用的插件列表", { enabled_plugins: enabledPlugins });
+    await fs.ensureDir(this._pluginRootDir);
+    const enabledPlugins = await this._hostService.loadEnabledPlugins();
+    this._logger.info("读取到启用的插件列表", { enabled_plugins: enabledPlugins });
 
-      // 按顺序加载所有启用的插件
-      for (const pluginId of enabledPlugins) {
-        if (this._isShuttingDown) break;
-        try {
-          await this.loadPlugin(pluginId);
-        } catch (error) {
-          logger.error("插件加载失败，已跳过", {
-            plugin_id: pluginId,
-            error: (error as Error).message,
-          });
-          await EventBus.instance.publish(
-            new PluginErrorEvent(
-              {
-                pluginId,
-                error: (error as Error).message,
-                stack: (error as Error).stack,
-              },
-              createTraceContext()
-            )
-          );
-        }
+    for (const pluginId of enabledPlugins) {
+      if (this._isShuttingDown) break;
+      try {
+        await this.loadPlugin(pluginId);
+      } catch (error) {
+        const message = (error as Error).message;
+        this._logger.error("插件加载失败，已跳过", { plugin_id: pluginId, error: message });
+        this._hostService.publishDomainEvent(
+          new PluginErrorEvent(
+            {
+              pluginId,
+              error: message,
+              stack: (error as Error).stack,
+            },
+            createTraceContext()
+          )
+        );
       }
-
-      this._isInitialized = true;
-      logger.info("插件管理器初始化完成", {
-        total_enabled: enabledPlugins.length,
-        successfully_loaded: this._plugins.size,
-      });
-    } catch (error) {
-      logger.error("插件管理器初始化失败", { error: (error as Error).message });
-      throw new PluginException(
-        `插件管理器初始化失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_ERROR
-      );
     }
+
+    this._isInitialized = true;
+    this._logger.info("插件管理器初始化完成", {
+      total_enabled: enabledPlugins.length,
+      successfully_loaded: this._plugins.size,
+    });
   }
 
-  /**
-   * 加载单个插件
-   * @param pluginId 插件ID（插件目录名称）
-   */
   public async loadPlugin(pluginId: string): Promise<void> {
     if (this._plugins.has(pluginId)) {
-      logger.warn("插件已加载，跳过重复加载", { plugin_id: pluginId });
       return;
     }
 
-    const config = ConfigManager.instance.getConfig();
     const pluginDir = path.join(this._pluginRootDir, pluginId);
-    logger.info("开始加载插件", { plugin_id: pluginId, plugin_dir: pluginDir });
+    const manifestPath = path.join(pluginDir, "plugin-manifest.yaml");
 
-    // 步骤1：校验插件目录是否存在
     if (!(await fs.pathExists(pluginDir))) {
       throw new PluginException(`插件目录不存在: ${pluginDir}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
     }
 
-    // 步骤2：加载并校验插件清单文件
-    const manifestPath = path.join(pluginDir, "plugin-manifest.yaml");
     if (!(await fs.pathExists(manifestPath))) {
-      throw new PluginException(
-        `插件清单文件不存在: ${manifestPath}`,
-        ErrorCode.PLUGIN_VALIDATION_FAILED
-      );
+      throw new PluginException(`插件清单不存在: ${manifestPath}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
     }
 
-    let manifest: PluginManifest;
-    try {
-      const manifestContent = await fs.readFile(manifestPath, "utf-8");
-      const parsedManifest = yaml.parse(manifestContent);
-      const validationResult = PluginManifestSchema.safeParse(parsedManifest);
-      if (!validationResult.success) {
-        const errorDetails = validationResult.error.issues
-          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-          .join('; ');
-        throw new Error(`清单格式校验失败: ${errorDetails}`);
-      }
-      manifest = validationResult.data;
-    } catch (error) {
-      throw new PluginException(
-        `插件清单解析失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_VALIDATION_FAILED
-      );
-    }
+    const manifestRaw = yaml.parse(await fs.readFile(manifestPath, "utf-8"));
+    const manifest = this.toManifestLite(manifestRaw, pluginId);
 
-    // 步骤3：校验插件ID一致性
     if (manifest.id !== pluginId) {
+      throw new PluginException(`插件ID不匹配: ${pluginId} != ${manifest.id}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
+    }
+
+    const appVersion = this._hostService.getConfig().app.app_version;
+    if (!this.isVersionCompatible(appVersion, manifest.minAppVersion)) {
       throw new PluginException(
-        `插件ID不匹配，目录名: ${pluginId}, 清单ID: ${manifest.id}`,
+        `插件最低版本不兼容: need=${manifest.minAppVersion}, current=${appVersion}`,
         ErrorCode.PLUGIN_VALIDATION_FAILED
       );
     }
 
-    // 步骤4：校验插件是否在黑名单中
-    if (config.plugin.plugin_blacklist.includes(pluginId)) {
-      throw new PluginException(
-        `插件在黑名单中，禁止加载: ${pluginId}`,
-        ErrorCode.PLUGIN_VALIDATION_FAILED
-      );
-    }
-
-    // 步骤5：校验最小应用版本
-    const appVersion = config.app.app_version;
-    const minVersion = manifest.minAppVersion;
-    if (!this.isVersionCompatible(appVersion, minVersion)) {
-      throw new PluginException(
-        `插件要求最低应用版本: ${minVersion}, 当前应用版本: ${appVersion}`,
-        ErrorCode.PLUGIN_VALIDATION_FAILED
-      );
-    }
-
-    // 步骤6：合并权限，校验权限合法性
-    const grantedPermissions: Permission[] = [
-      ...(config.plugin.default_permissions as Permission[]),
-      ...(manifest.permissions as Permission[]),
-    ];
-    logger.debug("插件权限合并完成", {
-      plugin_id: pluginId,
-      granted_permissions: grantedPermissions,
-    });
-
-    // 步骤7：创建内核代理实例
-    const kernelProxy = new KernelProxyImpl(pluginId, grantedPermissions);
-
-    // 步骤8：加载插件入口文件（使用原生 require）
     const entryPath = path.resolve(pluginDir, manifest.main);
     if (!(await fs.pathExists(entryPath))) {
+      throw new PluginException(`插件入口不存在: ${entryPath}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pluginExports = require(entryPath);
+    const plugin: SystemPlugin = pluginExports.default;
+
+    if (!plugin || typeof plugin.onActivate !== "function") {
       throw new PluginException(
-        `插件入口文件不存在: ${entryPath}`,
+        `插件入口未通过 'export default' 导出插件实例: ${pluginId}`,
         ErrorCode.PLUGIN_VALIDATION_FAILED
       );
     }
 
-    let pluginInstance: IBasePlugin;
-    try {
-      // 使用 Node.js 原生 require 加载插件
-      // vm2 已官方弃用，后续可迁移到 worker_threads + MessageChannel 实现真正隔离
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pluginExports = require(entryPath);
-      const PluginClass = pluginExports.default || pluginExports.Plugin || pluginExports;
-      if (!PluginClass || typeof PluginClass !== "function") {
-        throw new Error("插件入口文件未导出插件类（需要 module.exports = PluginClass 或 exports.Plugin = PluginClass）");
-      }
-
-      pluginInstance = new PluginClass() as IBasePlugin;
-      if (typeof pluginInstance.onInit !== "function" || typeof pluginInstance.onStart !== "function") {
-        throw new Error("插件未实现必要的生命周期钩子: onInit/onStart");
-      }
-
-      pluginInstance.kernelProxy = kernelProxy;
-    } catch (error) {
-      throw new PluginException(
-        `插件入口加载失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_SANDBOX_ERROR
-      );
-    }
-
-    // 步骤9：执行插件生命周期钩子 preLoad
-    if (typeof pluginInstance.preLoad === "function") {
-      try {
-        await this.withTimeout(
-          pluginInstance.preLoad.bind(pluginInstance)(),
-          this._pluginTimeoutMs,
-          `插件 ${pluginId} preLoad 钩子执行超时`
-        );
-        logger.debug("插件preLoad钩子执行完成", { plugin_id: pluginId });
-      } catch (error) {
-        throw new PluginException(
-          `插件preLoad钩子执行失败: ${(error as Error).message}`,
-          ErrorCode.PLUGIN_LIFECYCLE_ERROR
-        );
-      }
-    }
-
-    // 步骤10：执行插件生命周期钩子 onInit
-    try {
-      await this.withTimeout(
-        pluginInstance.onInit.bind(pluginInstance)(),
-        this._pluginTimeoutMs,
-        `插件 ${pluginId} onInit 钩子执行超时`
-      );
-      logger.debug("插件onInit钩子执行完成", { plugin_id: pluginId });
-    } catch (error) {
-      throw new PluginException(
-        `插件onInit钩子执行失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_LIFECYCLE_ERROR
-      );
-    }
-
-    // 步骤11：存储插件实例
+    const pluginConfig = await this.loadPluginConfig(pluginId, plugin);
+    const context = this.createSandboxContext(pluginId, manifest.permissions, pluginConfig);
     this._plugins.set(pluginId, {
       manifest,
-      plugin: pluginInstance,
-      proxy: kernelProxy,
+      plugin,
+      context,
       isRunning: false,
     });
 
-    // 步骤12：发布插件加载完成事件
-    await EventBus.instance.publish(
+    this._hostService.publishDomainEvent(
       new PluginLoadedEvent(
         {
           pluginId: manifest.id,
@@ -290,123 +158,81 @@ export class PluginManager {
         createTraceContext()
       )
     );
-
-    logger.info("插件加载成功", {
-      plugin_id: pluginId,
-      plugin_name: manifest.name,
-      version: manifest.version,
-      category: manifest.category,
-    });
   }
 
-  /**
-   * 启动单个插件
-   * @param pluginId 插件ID
-   */
   public async startPlugin(pluginId: string): Promise<void> {
-    const pluginInstance = this._plugins.get(pluginId);
-    if (!pluginInstance) {
-      throw new PluginException(`插件未加载，无法启动: ${pluginId}`, ErrorCode.PLUGIN_ERROR);
-    }
-    if (pluginInstance.isRunning) {
-      logger.warn("插件已在运行中，跳过重复启动", { plugin_id: pluginId });
+    const item = this._plugins.get(pluginId);
+    if (!item || item.isRunning) {
       return;
     }
 
-    logger.info("开始启动插件", { plugin_id: pluginId });
+    await this.withTimeout(
+      Promise.resolve(item.plugin.onActivate(item.context)),
+      this._pluginTimeoutMs,
+      `插件 ${pluginId} onActivate 超时`
+    );
 
-    try {
-      await this.withTimeout(
-        pluginInstance.plugin.onStart.bind(pluginInstance.plugin)(),
-        this._pluginTimeoutMs,
-        `插件 ${pluginId} onStart 钩子执行超时`
-      );
+    item.isRunning = true;
 
-      pluginInstance.isRunning = true;
-      this._plugins.set(pluginId, pluginInstance);
-
-      await EventBus.instance.publish(
-        new PluginStartedEvent(
-          {
-            pluginId: pluginInstance.manifest.id,
-            pluginName: pluginInstance.manifest.name,
-            version: pluginInstance.manifest.version,
-          },
-          createTraceContext()
-        )
-      );
-
-      logger.info("插件启动成功", { plugin_id: pluginId });
-    } catch (error) {
-      logger.error("插件启动失败", { plugin_id: pluginId, error: (error as Error).message });
-      throw new PluginException(
-        `插件启动失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_LIFECYCLE_ERROR
-      );
-    }
+    this._hostService.publishDomainEvent(
+      new PluginStartedEvent(
+        {
+          pluginId: item.manifest.id,
+          pluginName: item.manifest.name,
+          version: item.manifest.version,
+        },
+        createTraceContext()
+      )
+    );
   }
 
-  /**
-   * 启动所有已加载插件
-   */
   public async startAllPlugins(): Promise<void> {
     for (const pluginId of this._plugins.keys()) {
       if (this._isShuttingDown) break;
-      await this.startPlugin(pluginId);
-    }
-  }
-
-  /**
-   * 停止单个插件
-   * @param pluginId 插件ID
-   */
-  public async stopPlugin(pluginId: string): Promise<void> {
-    const pluginInstance = this._plugins.get(pluginId);
-    if (!pluginInstance) {
-      return;
-    }
-    if (!pluginInstance.isRunning) {
-      return;
-    }
-
-    logger.info("开始停止插件", { plugin_id: pluginId });
-
-    try {
-      if (typeof pluginInstance.plugin.onStop === "function") {
-        await this.withTimeout(
-          pluginInstance.plugin.onStop.bind(pluginInstance.plugin)(),
-          this._pluginTimeoutMs,
-          `插件 ${pluginId} onStop 钩子执行超时`
-        );
+      try {
+        await this.startPlugin(pluginId);
+      } catch (error) {
+        this._logger.error("插件启动失败", { plugin_id: pluginId, error: (error as Error).message });
       }
-
-      pluginInstance.isRunning = false;
-      this._plugins.set(pluginId, pluginInstance);
-
-      await EventBus.instance.publish(
-        new PluginStoppedEvent(
-          {
-            pluginId: pluginInstance.manifest.id,
-            pluginName: pluginInstance.manifest.name,
-            version: pluginInstance.manifest.version,
-          },
-          createTraceContext()
-        )
-      );
-
-      logger.info("插件停止成功", { plugin_id: pluginId });
-    } catch (error) {
-      logger.error("插件停止失败", { plugin_id: pluginId, error: (error as Error).message });
-      throw new PluginException(
-        `插件停止失败: ${(error as Error).message}`,
-        ErrorCode.PLUGIN_LIFECYCLE_ERROR
-      );
     }
   }
 
-  /**
-   * 停止所有插件
-   */
+  public async stopPlugin(pluginId: string): Promise<void> {
+    const item = this._plugins.get(pluginId);
+    if (!item || !item.isRunning) {
+      return;
+    }
+
+    if (typeof item.plugin.onDeactivate === "function") {
+      await this.withTimeout(
+        Promise.resolve(item.plugin.onDeactivate()),
+        this._pluginTimeoutMs,
+        `插件 ${pluginId} onDeactivate 超时`
+      );
+    }
+
+    for (const sub of item.context.subscriptions) {
+      try {
+        await Promise.resolve(sub.dispose());
+      } catch (error) {
+        this._logger.warn("释放插件订阅失败", { plugin_id: pluginId, error: (error as Error).message });
+      }
+    }
+    item.context.subscriptions.length = 0;
+    item.isRunning = false;
+
+    this._hostService.publishDomainEvent(
+      new PluginStoppedEvent(
+        {
+          pluginId: item.manifest.id,
+          pluginName: item.manifest.name,
+          version: item.manifest.version,
+        },
+        createTraceContext()
+      )
+    );
+  }
+
   public async stopAllPlugins(): Promise<void> {
     for (const pluginId of Array.from(this._plugins.keys())) {
       if (this._isShuttingDown) break;
@@ -414,9 +240,182 @@ export class PluginManager {
     }
   }
 
-  /**
-   * 工具：执行带超时的 Promise
-   */
+  public async shutdown(): Promise<void> {
+    if (this._isShuttingDown) {
+      return;
+    }
+
+    this._isShuttingDown = true;
+    await this.stopAllPlugins();
+    this._plugins.clear();
+    this._isInitialized = false;
+  }
+
+  private createSandboxContext(
+    pluginId: string,
+    permissions: Permission[],
+    pluginConfig: Record<string, unknown> = {}
+  ): ExtensionContext {
+    const subscriptions: IDisposable[] = [];
+    const storage = this._hostService.createStorage(pluginId);
+    const frozenConfig = this.hasPluginPermission(permissions, Permission.CONFIG_READ_SELF)
+      ? Object.freeze({ ...pluginConfig })
+      : Object.freeze({});
+
+    return {
+      pluginId,
+      logger: this._hostService.createLogger(`Plugin:${pluginId}`),
+      config: frozenConfig,
+      storage: {
+        get: (key: string) => storage.get(key),
+        set: (key: string, value: unknown) => storage.set(key, value),
+        delete: (key: string) => storage.delete(key),
+      },
+      subscriptions,
+      perception: {
+        inject: async (event) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.PERCEPTION_WRITE, "注入感知事件");
+          await this._hostService.injectPerception(event);
+        },
+      },
+      sceneAttention: {
+        reportSceneAttention: (channelId: string, focused: boolean) => {
+          this._hostService.reportSceneAttention(pluginId, channelId, focused);
+        },
+      },
+      bus: {
+        on: (eventName: string, handler: (payload: unknown) => void) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.EVENT_SUBSCRIBE, `订阅事件 ${eventName}`);
+          this.assertSubscribableTopic(pluginId, eventName);
+          const wrapped = async (evt: unknown) => {
+            const payload = (evt as Record<string, unknown>)["payload"] ?? evt;
+            await Promise.resolve(handler(payload));
+          };
+          const disposable = this._hostService.subscribeEvent(eventName, wrapped);
+          subscriptions.push(disposable);
+          return disposable;
+        },
+        emit: (eventName: string, payload: unknown) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.EVENT_PUBLISH, `发布事件 ${eventName}`);
+          this.assertPublishableTopic(pluginId, eventName);
+          this._hostService.publishPluginEvent(
+            eventName,
+            `${pluginId}-${Date.now()}`,
+            payload
+          );
+        },
+      },
+      agents: {
+        registerSubAgent: (profile) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.AGENT_REGISTER, `注册子代理 ${profile.name}`);
+          const disposable = this._hostService.registerAgent(pluginId, profile);
+          subscriptions.push(disposable);
+          return disposable;
+        },
+      },
+    };
+  }
+
+  private toManifestLite(raw: unknown, pluginId: string): PluginManifestLite {
+    const parsed = PluginManifestSchema.safeParse(raw);
+    if (!parsed.success) {
+      const detail = parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ");
+      throw new PluginException(`插件清单格式错误: ${pluginId}; ${detail}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
+    }
+
+    const manifest = parsed.data as PluginManifest;
+    if (manifest.id !== pluginId) {
+      throw new PluginException(`插件ID不匹配: ${pluginId} != ${manifest.id}`, ErrorCode.PLUGIN_VALIDATION_FAILED);
+    }
+
+    return {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      main: manifest.main,
+      minAppVersion: manifest.minAppVersion,
+      permissions: manifest.permissions,
+    };
+  }
+
+  private async loadPluginConfig(pluginId: string, plugin: SystemPlugin): Promise<Record<string, unknown>> {
+    const pluginConfigPath = path.join(this._hostService.getRepoRoot(), "configs", "plugin", `${pluginId}.yaml`);
+    let pluginConfig: Record<string, unknown> = {};
+
+    if (!(await fs.pathExists(pluginConfigPath))) {
+      return pluginConfig;
+    }
+
+    try {
+      const raw = await fs.readFile(pluginConfigPath, "utf-8");
+      pluginConfig = yaml.parse(raw) ?? {};
+    } catch (error) {
+      throw new PluginException(
+        `插件配置文件解析失败: ${pluginId}; ${(error as Error).message}`,
+        ErrorCode.PLUGIN_VALIDATION_FAILED
+      );
+    }
+
+    if (!plugin.configSchema || typeof plugin.configSchema.safeParse !== "function") {
+      return pluginConfig;
+    }
+
+    const parsed = plugin.configSchema.safeParse(pluginConfig);
+    if (!parsed.success) {
+      const issues = parsed.error.issues ?? [];
+      const detail = issues
+        .map((issue) => `${(issue.path ?? []).join(".")}: ${issue.message}`)
+        .join("; ");
+      throw new PluginException(
+        `插件配置校验失败: ${pluginId}; ${detail || "unknown validation error"}`,
+        ErrorCode.PLUGIN_VALIDATION_FAILED
+      );
+    }
+
+    return parsed.data as Record<string, unknown>;
+  }
+
+  private hasPluginPermission(permissions: Permission[], permission: Permission): boolean {
+    return hasPermission(permission, permissions);
+  }
+
+  private assertPluginPermission(
+    pluginId: string,
+    permissions: Permission[],
+    permission: Permission,
+    action: string
+  ): void {
+    if (this.hasPluginPermission(permissions, permission)) {
+      return;
+    }
+    throw new PluginException(
+      `插件 ${pluginId} 缺少权限 ${permission}，无法${action}`,
+      ErrorCode.PLUGIN_PERMISSION_DENIED
+    );
+  }
+
+  private assertSubscribableTopic(pluginId: string, eventName: string): void {
+    if (PLUGIN_SUBSCRIBE_TOPICS.has(eventName) || eventName.startsWith(`plugin.${pluginId}.`)) {
+      return;
+    }
+    throw new PluginException(
+      `插件 ${pluginId} 不允许订阅事件 ${eventName}`,
+      ErrorCode.PLUGIN_PERMISSION_DENIED
+    );
+  }
+
+  private assertPublishableTopic(pluginId: string, eventName: string): void {
+    if (eventName.startsWith(`plugin.${pluginId}.`)) {
+      return;
+    }
+    throw new PluginException(
+      `插件 ${pluginId} 仅允许发布 plugin.${pluginId}.* 命名空间事件，当前为 ${eventName}`,
+      ErrorCode.PLUGIN_PERMISSION_DENIED
+    );
+  }
+
   private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
     let timeoutHandle: NodeJS.Timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -428,29 +427,6 @@ export class PluginManager {
     });
   }
 
-  /**
-   * 关闭插件管理器，优雅停机
-   */
-  public async shutdown(): Promise<void> {
-    if (this._isShuttingDown) {
-      return;
-    }
-
-    logger.info("插件管理器开始关闭");
-    this._isShuttingDown = true;
-
-    // 停止所有插件
-    await this.stopAllPlugins();
-    // 清空所有插件实例
-    this._plugins.clear();
-    this._isInitialized = false;
-
-    logger.info("插件管理器关闭完成");
-  }
-
-  /**
-   * 版本兼容性检查，简单语义版本比较
-   */
   private isVersionCompatible(current: string, minRequired: string): boolean {
     const parse = (v: string) => v.split(".").map((x) => parseInt(x, 10));
     const cur = parse(current);

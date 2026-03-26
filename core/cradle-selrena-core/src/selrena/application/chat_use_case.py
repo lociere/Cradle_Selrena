@@ -12,7 +12,7 @@ import asyncio
 from dataclasses import dataclass
 from .base_use_case import BaseUseCase
 from selrena.domain.self.self_entity import SelrenaSelfEntity
-from selrena.core.contracts.kernel_ingress_contracts import ModelInputPayloadModel
+from selrena.core.contracts.kernel_ingress_contracts import PerceptionEventContentModel
 from selrena.inference.llm_engine import LLMEngine, LLMMessage, LLMRequest
 from selrena.inference.multimodal_router import MultimodalRouter
 from selrena.core.exceptions import PersonaViolationException
@@ -31,8 +31,8 @@ class ChatInput:
     对话用例输入，由TS内核传入的标准化参数
     【核心规范】：完全屏蔽平台/场景细节，AI层看不到任何场景信息
     """
-    # 统一模型输入：文本/图片/视频均在 items 中表达
-    model_input: ModelInputPayloadModel | dict
+    # 统一模型输入
+    model_input: PerceptionEventContentModel | dict
     # 场景唯一ID（仅用于隔离短期记忆，AI层不处理场景规则）
     scene_id: str
     # 对话对象熟悉度 0-10（10=核心用户，0=陌生人，内核已计算完成）

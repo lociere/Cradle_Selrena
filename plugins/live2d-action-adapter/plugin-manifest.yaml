@@ -4,9 +4,7 @@ version: 0.1.0
 author: Selrena Team
 description: Subscribe action stream events and persist live2d action chunks for renderer consumption
 category: adapter
-main: index.js
+main: dist/index.js
 minAppVersion: 0.1.0
 permissions:
   - EVENT_SUBSCRIBE
-  - CONFIG_READ_SELF
-  - CONFIG_WRITE_SELF

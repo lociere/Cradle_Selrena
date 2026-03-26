@@ -5,6 +5,10 @@ packages:
   - 'packages/@cradle-selrena/**'
   - 'assets/**'
   - 'scripts/**'
+  - 'plugins/_sdk'
+  - 'plugins/napcat-adapter'
+  - 'plugins/_template'
+  - 'plugins/live2d-action-adapter'
 allowBuilds:
   '@bufbuild/buf': true
   better-sqlite3: true

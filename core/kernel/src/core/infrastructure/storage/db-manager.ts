@@ -66,6 +66,15 @@ export class DBManager {
       meta TEXT
     )`).run();
 
+    // 插件沙箱 K/V 存储（按 plugin_id 命名空间隔离）
+    this._db.prepare(`CREATE TABLE IF NOT EXISTS plugin_storage (
+      plugin_id  TEXT NOT NULL,
+      key        TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (plugin_id, key)
+    )`).run();
+
     this._isInitialized = true;
     logger.info('数据库初始化完成');
   }
