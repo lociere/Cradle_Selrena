@@ -22,22 +22,13 @@ class PersonaConfig(BaseModel):
     """
     model_config = ConfigDict(frozen=True)  # 运行时完全冻结，不可篡改
 
-    # 基础身份信息（终身不变）
+    # 基础身份信息（身份锚定最小集，性格/外观等血肉由知识库承载）
     class BasePersona(BaseModel):
         name: str                   # 正式名称
         nickname: str               # 昵称
-        role: str                   # 角色定位（如：可爱少女）
+        role: str                   # 角色定位
         apparent_age: str           # 外显年龄段描述
         gender: str                 # 性别
-        appearance: str             # 外观描述
-        background: str             # 背景描述
-        model_config = ConfigDict(frozen=True)
-
-    # 核心人格与叙事驱动
-    class PersonaCore(BaseModel):
-        personality: str            # 性格总述
-        character_core: str         # 核心人格原则
-        likes: str                  # 偏好
         model_config = ConfigDict(frozen=True)
 
     # 对话风格与情绪表达协议
@@ -54,7 +45,6 @@ class PersonaConfig(BaseModel):
         model_config = ConfigDict(frozen=True)
 
     base: BasePersona
-    core: PersonaCore
     dialogue: DialoguePolicy
     safety: SafetyPolicy
 
@@ -91,7 +81,6 @@ class InferenceConfig(BaseModel):
         summon_keywords: List[str]   # 呼唤关键词（命中后进入聚焦）
         focus_on_any_chat: bool      # 任意聊天是否进入聚焦
         active_thought_modes: List[str]  # 允许主动思维的模式集合
-        source_focus_policies: Dict[str, str] = {}  # 来源类型到注意力策略的映射
         model_config = ConfigDict(frozen=True)
 
     # 记忆配置
@@ -119,10 +108,6 @@ class InferenceConfig(BaseModel):
     class ActionStreamConfig(BaseModel):
         enabled: bool
         channel: str
-        chunk_interval_ms: int
-        max_chunks_per_stream: int
-        emit_thinking_chunks: bool
-        emit_emotion_on_complete: bool
         model_config = ConfigDict(frozen=True)
 
     model: ModelConfig
@@ -136,29 +121,39 @@ class InferenceConfig(BaseModel):
 # 云端/API LLM 配置模型
 # ======================================
 class LLMConfig(BaseModel):
-    """云端LLM或API调用参数配置（如 DeepSeek/OpenAI/Azure）"""
+    """云端LLM或API调用参数配置（如 DeepSeek/OpenAI/Azure）
+
+    所有模型引用均通过 'provider/alias' 格式字符串表达，
+    provider_key=None 时取根 models 字典第一个值。
+    """
 
     class ProviderConfig(BaseModel):
+        """单个推理提供商配置。
+
+        models 字典格式：{alias: 模型 ID}
+        引用时使用 'provider/alias' 格式；无 alias 时取字典第一个值。
+        """
         api_type: str = "openai"
         api_key: str | None = None
         base_url: str | None = None
-        model: str | None = None
+        models: dict[str, str]
         temperature: float | None = None
         request_method: str | None = None
         request_path: str | None = None
         request_headers: dict[str, str] | None = None
         request_body_template: str | None = None
         response_extract: str | None = None
-        model_config = ConfigDict(frozen=True)
+        model_config = ConfigDict(frozen=True, extra="forbid")
 
     api_type: str  # deepseek / openai / azure / anthropic / local
     api_key: str | None = None
     base_url: str | None = None
-    model: str | None = None
+    # 根配置模型字典；provider_key=None 时取第一个值
+    models: dict[str, str] | None = None
     temperature: float | None = None
 
     # 可选：自定义请求结构
-    request_method: str | None = None  # GET/POST/PUT/PATCH/DELETE
+    request_method: str | None = None
     request_path: str | None = None
     request_headers: dict[str, str] | None = None
     request_body_template: str | None = None
@@ -166,8 +161,11 @@ class LLMConfig(BaseModel):
     # 可选：自定义响应提取路径（点分隔）
     response_extract: str | None = None
 
-    # 可选：多 provider 配置（例如 deepseek/qwen）
+    # 多 provider 配置
     providers: dict[str, ProviderConfig] | None = None
+
+    # _resolve_provider_config 内部写入，YAML 不初始化此字段
+    model: str | None = None
 
     model_config = ConfigDict(frozen=True)
 

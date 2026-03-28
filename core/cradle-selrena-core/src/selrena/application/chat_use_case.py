@@ -9,14 +9,47 @@
 4. 所有输出必须经过人设边界校验
 """
 import asyncio
+import re
 from dataclasses import dataclass
 from .base_use_case import BaseUseCase
 from selrena.domain.self.self_entity import SelrenaSelfEntity
 from selrena.core.contracts.kernel_ingress_contracts import PerceptionEventContentModel
 from selrena.inference.llm_engine import LLMEngine, LLMMessage, LLMRequest
-from selrena.inference.multimodal_router import MultimodalRouter
+from selrena.inference.multimodal_router import MultimodalRouter, VisionMessage
 from selrena.core.exceptions import PersonaViolationException
 from selrena.core.observability.logger import get_logger
+
+# 月见人设全量情绪标签正则（与 persona_injector.py 及 perception-builder.ts 同步维护）
+# 覆盖括号格式 [开心]、[emotion:happy] 及无括号前缀 emotion: happy
+_EMOTION_LABEL_WORDS = (
+    r'平静|开心|疑惑|撒娇|严肃|害羞|生气|委屈|思考'           # persona 明确标签
+    r'|高兴|愉快|愤怒|难过|傲娇|好奇|冷静|激动|无奈|担心|兴奋'  # 扩展同义词
+    r'|calm|happy|curious|coy|tsundere|shy|angry|aggrieved|thinking'  # 英文别名
+    r'|joyful|pleased|furious|sad|peaceful|worried|excited|sulky'
+)
+# 括号包裹格式（任意位置）：[开心] [emotion:happy] (calm) 《思考》 等
+_EMOTION_TAG_RE = re.compile(
+    r'[\[\(（【《<]\s*(?:emotion|情绪)?\s*[:：\-]?\s*(?:' + _EMOTION_LABEL_WORDS + r')\s*[\]\)）】》>]',
+    re.IGNORECASE,
+)
+# 无括号前缀格式（仅行首）：emotion: happy 情绪：开心
+_EMOTION_PREFIX_RE = re.compile(
+    r'^(?:emotion|情绪)\s*[:：]\s*(?:' + _EMOTION_LABEL_WORDS + r')\s*',
+    re.IGNORECASE,
+)
+
+
+def _strip_emotion_tags(text: str) -> str:
+    """剥除 LLM 输出中的全部情绪标签，供存入记忆前使用。
+
+    处理范围：
+      - 括号格式（任意位置）：[开心] [emotion:happy] (shy) 等
+      - 无括号前缀（行首）：emotion: happy / 情绪：开心
+    """
+    value = _EMOTION_TAG_RE.sub('', text).strip()
+    value = _EMOTION_PREFIX_RE.sub('', value).strip()
+    return re.sub(r' {2,}', ' ', value).strip()
+
 
 # 初始化模块日志器
 logger = get_logger("chat_use_case")
@@ -139,8 +172,9 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
 ===== 相关通用知识 =====
 {knowledge_text if knowledge_text else "无相关知识"}
 
-===== 多模态语义 =====
-{multimodal_text if multimodal_text else "无多模态输入"}
+===== 用户发送的媒体内容 =====
+（以下是对用户发来的图片/表情包/视频的简要描述，请自然地参考这些内容进行回复，不要逐字复述描述词）
+{multimodal_text if multimodal_text else "无图片或视频"}
 """.strip()
 
     async def _execute(self, input_data: ChatInput, trace_id: str) -> ChatOutput:
@@ -159,10 +193,37 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
         async with runtime.lock:
             # ======================================
             # 步骤0：统一输入路由（固定策略）
+            # multimodal_router.route() 在 specialist_then_core 策略下会同步调用
+            # 视觉 API（阻塞 HTTP），必须放入线程池执行，不能直接 await。
             # ======================================
-            route_result = self.multimodal_router.route(input_data.model_input)
+            route_result = await asyncio.to_thread(
+                self.multimodal_router.route, input_data.model_input
+            )
             user_text = route_result.primary_text or "[多模态输入]"
             multimodal_text = route_result.semantic_text
+            if multimodal_text:
+                logger.info(
+                    "视觉专家描述已生成",
+                    strategy=route_result.strategy,
+                    semantic_text=multimodal_text,
+                )
+
+            # core_direct 策略：将 VisionMessage 列表转为 LLMMessage（vision 格式）
+            vision_llm_messages: list[LLMMessage] = [
+                LLMMessage(
+                    role="user",
+                    content=vm.prompt,
+                    vision_url=vm.uri,
+                    vision_mime=vm.mime_type,
+                )
+                for vm in route_result.vision_messages
+            ]
+            # core_direct 时使用多模态专用推理提供商，否则走默认
+            vision_provider_key: str | None = (
+                self.self_entity.inference_config.multimodal.core_model
+                if vision_llm_messages
+                else None
+            )
 
             # ======================================
             # 步骤1：情绪更新（基于用户输入）
@@ -217,6 +278,8 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             llm_request = LLMRequest(
                 messages=[
                     LLMMessage(role="system", content=system_message),
+                    # core_direct：视觉消息插在系统消息之后、对话历史之前
+                    *vision_llm_messages,
                     *[
                         LLMMessage(role=message.role, content=message.content)
                         for message in session.get_recent_messages(
@@ -235,7 +298,9 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             # ======================================
             # 步骤4：LLM生成回复（线程外执行，避免阻塞事件循环）
             # ======================================
-            raw_reply = await asyncio.to_thread(self.llm_engine.generate, llm_request)
+            raw_reply = await asyncio.to_thread(
+                self.llm_engine.generate, llm_request, vision_provider_key
+            )
             logger.debug("LLM回复生成完成", trace_id=trace_id, reply_length=len(raw_reply))
 
             # ======================================
@@ -248,7 +313,9 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             # ======================================
             # 步骤6：沉淀会话态与短期记忆
             # ======================================
-            session.append_message(role="assistant", content=raw_reply)
+            # 存入记忆前剥除情绪标签，防止污染未来 LLM 上下文
+            clean_reply = _strip_emotion_tags(raw_reply)
+            session.append_message(role="assistant", content=clean_reply)
             session.compact_history(
                 trigger_count=self.self_entity.inference_config.memory.summary_trigger_count,
                 keep_recent_count=self.self_entity.inference_config.memory.summary_keep_recent_count,
@@ -256,7 +323,7 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             )
             short_term_memory.add(
                 role="selrena",
-                content=raw_reply,
+                content=clean_reply,
                 importance=0.6
             )
             logger.debug("会话态与短期记忆沉淀完成", trace_id=trace_id)
@@ -265,7 +332,7 @@ class ChatUseCase(BaseUseCase[ChatInput, ChatOutput]):
             # 步骤7：返回标准化结果
             # ======================================
             return ChatOutput(
-                reply_content=raw_reply,
+                reply_content=raw_reply,  # 返回原始回复，由 TS cleanOutboundReply 做最终清洗
                 emotion_state=current_emotion,
                 trace_id=trace_id
             )

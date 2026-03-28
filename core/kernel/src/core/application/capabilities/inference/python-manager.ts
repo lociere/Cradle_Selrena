@@ -107,6 +107,8 @@ export class PythonAIManager {
   /** 逐行缓冲：子进程 data 事件可能携带不完整行 */
   private _stdoutLineBuffer: string = "";
   private _stderrLineBuffer: string = "";
+  /** 标记是否为主动停止，避免 exit 事件误触自动重启 */
+  private _stoppingIntentionally: boolean = false;
 
   /**
    * 获取单例实例
@@ -131,7 +133,7 @@ export class PythonAIManager {
 
     logger.info("开始启动Python AI层");
     const config = ConfigManager.instance.getConfig();
-    this._requestTimeoutMs = config.ipc.request_timeout_ms;
+    this._requestTimeoutMs = config.kernel.ipc.request_timeout_ms;
 
     try {
       // 冻结核心配置，防止运行时修改
@@ -139,17 +141,18 @@ export class PythonAIManager {
 
       const repoRoot = resolveRepoRoot();
 
+      const pythonCoreDir = path.resolve(repoRoot, "core", "cradle-selrena-core");
       const venvPythonPath = process.platform === "win32"
-        ? path.resolve(repoRoot, ".venv", "Scripts", "python.exe")
-        : path.resolve(repoRoot, ".venv", "bin", "python");
-      const pythonEntryPath = path.resolve(repoRoot, "core", "cradle-selrena-core", "src", "selrena", "main.py");
+        ? path.resolve(pythonCoreDir, ".venv", "Scripts", "python.exe")
+        : path.resolve(pythonCoreDir, ".venv", "bin", "python");
+      const pythonEntryPath = path.resolve(pythonCoreDir, "src", "selrena", "main.py");
 
       logger.debug("Python执行路径", { python_path: venvPythonPath, entry_path: pythonEntryPath });
 
       this._pythonProcess = spawn(venvPythonPath, [pythonEntryPath], {
         env: {
           ...process.env,
-          SELRENA_IPC_BIND_ADDRESS: config.ipc.bind_address,
+          SELRENA_IPC_BIND_ADDRESS: config.kernel.ipc.bind_address,
           SELRENA_CONFIG: JSON.stringify(config.ai),
           LOG_DIR: resolveLogDir(config.app.data_dir, config.app.log_dir),
           PYTHONUNBUFFERED: "1",
@@ -192,7 +195,7 @@ export class PythonAIManager {
         this._isRunning = false;
         this._isReady = false;
 
-        if (code !== 0) {
+        if (!this._stoppingIntentionally && code !== 0) {
           logger.error("Python AI层异常退出，正在自动重启");
           this.restart().catch(() => {
             logger.error("自动重启失败");
@@ -202,7 +205,8 @@ export class PythonAIManager {
 
       this._pythonProcess.on("error", (error) => {
         logger.error("Python AI层进程启动失败", { error: error.message });
-        throw new CoreException(`Python进程启动失败: ${error.message}`, ErrorCode.INFERENCE_ERROR);
+        this._isRunning = false;
+        this._isReady = false;
       });
 
       this._isRunning = true;
@@ -236,8 +240,8 @@ export class PythonAIManager {
 
     return new Promise((resolve, reject) => {
       const check = () => {
-        // 进程意外退出：快速失败，避免等满超时
-        if (!this._pythonProcess || this._pythonProcess.killed) {
+        // 进程意外退出或启动失败：快速失败，避免等满超时
+        if (!this._pythonProcess || this._pythonProcess.killed || !this._isRunning) {
           return reject(new CoreException("Python 进程意外退出", ErrorCode.INFERENCE_ERROR));
         }
 
@@ -443,6 +447,7 @@ export class PythonAIManager {
     }
 
     logger.info("Python AI层开始停止");
+    this._stoppingIntentionally = true;
     this._isRunning = false;
     this._isReady = false;
 
@@ -455,6 +460,7 @@ export class PythonAIManager {
     }
 
     this._pythonProcess = null;
+    this._stoppingIntentionally = false;
     logger.info("Python AI层停止完成");
   }
 

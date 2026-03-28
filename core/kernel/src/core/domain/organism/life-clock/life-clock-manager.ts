@@ -4,13 +4,14 @@
  * 按配置的间隔发送心跳给Python AI层，触发主动思维生成
  */
 import { ConfigManager } from "../../../foundation/config/config-manager";
-import { AIProxy } from "../../../application/capabilities/inference/ai-proxy";
 import { getLogger } from "../../../foundation/logger/logger";
 import { EventBus } from "../../../foundation/event-bus/event-bus";
 import {
+  IAICapabilityPort,
   SceneAttentionChangedEvent,
   OrganismAttentionChangedEvent,
   OrganismAttentionMode,
+  SourceAttentionPolicy,
   createTraceContext,
 } from "@cradle-selrena/protocol";
 import { AttentionTrigger, AttentionTriggerResult } from "./triggers/attention-trigger";
@@ -19,12 +20,6 @@ import { WakeKeywordTrigger } from "./triggers/wake-keyword-trigger";
 const logger = getLogger("life-clock-manager");
 
 export type AttentionMode = "standby" | "ambient" | "focused";
-type SourceAttentionPolicy =
-  | "always_focused"
-  | "wake_word_focus"
-  | "wake_word_focus_with_timeout"
-  | "chat_or_wake_focus_with_timeout"
-  | "ignore";
 
 /**
  * 生命时钟管理器
@@ -45,16 +40,14 @@ export class LifeClockManager {
   private _activeThoughtModes: Set<AttentionMode> = new Set(["ambient", "focused"]);
   private _heartbeatEnabled: boolean = true;
   private _stickyFocusSource: string | null = null;
-  private _sourceFocusPolicies: Record<string, SourceAttentionPolicy> = {
-    private: "always_focused",
-    group: "wake_word_focus_with_timeout",
-    channel: "wake_word_focus_with_timeout",
-    terminal: "chat_or_wake_focus_with_timeout",
-    system: "ignore",
-    unknown: "chat_or_wake_focus_with_timeout",
-  };
+  /** 由插件通过 registerSourcePolicies 注入，不从全局配置读取 */
+  private _sourceFocusPolicies: Record<string, SourceAttentionPolicy> = {};
   private readonly _channelFocusStates: Map<string, boolean> = new Map();
+  /** per-channel 焦点超时计时器，与 _focusDurationMs 联动 */
+  private readonly _channelFocusTimers: Map<string, NodeJS.Timeout> = new Map();
   private readonly _triggers: Map<string, AttentionTrigger> = new Map();
+  private _sceneAttentionHandler: ((event: SceneAttentionChangedEvent) => Promise<void>) | null = null;
+  private _aiProxy!: IAICapabilityPort;
 
   /**
    * 获取单例实例
@@ -71,7 +64,8 @@ export class LifeClockManager {
   /**
    * 初始化生命时钟管理器
    */
-  public async init(): Promise<void> {
+  public async init(aiProxy: IAICapabilityPort): Promise<void> {
+    this._aiProxy = aiProxy;
     const config = ConfigManager.instance.getConfig();
     const lifeClock = config.ai.inference.life_clock;
     this._focusedIntervalMs = lifeClock.focused_interval_ms;
@@ -83,18 +77,53 @@ export class LifeClockManager {
     this._summonKeywords = lifeClock.summon_keywords;
     this._activeThoughtModes = new Set(lifeClock.active_thought_modes);
     this._heartbeatEnabled = this._activeThoughtModes.size > 0;
-    this._sourceFocusPolicies = {
-      ...this._sourceFocusPolicies,
-      ...(lifeClock.source_focus_policies || {}),
-    };
     this.ensureDefaultTriggers();
 
     // 订阅频道场景注意力变更事件，更新有机体状态
-    EventBus.instance.subscribe('SceneAttentionChangedEvent', async (event) => {
+    // ⚠️ 安全约束：handler 内部禁止使用 await。
+    //    EventBus.publish 通过 Promise.all 并发调用所有 handler，若此处挂起，
+    //    其他事件 handler 会插入执行，导致 _channelFocusStates/_channelFocusTimers 中间状态被读到。
+    //    Node.js 单线程模型仅在同步执行期间保证原子性。
+    this._sceneAttentionHandler = async (event) => {
       const e = event as SceneAttentionChangedEvent;
       this._channelFocusStates.set(e.channelId, e.focused);
+
+      // per-channel 焦点超时：focus=true 时重置/启动倒计时，focus=false 时清除
+      const existing = this._channelFocusTimers.get(e.channelId);
+      if (existing) {
+        clearTimeout(existing);
+        this._channelFocusTimers.delete(e.channelId);
+      }
+      if (e.focused) {
+        const effectiveDuration = e.durationMs ?? this._focusDurationMs;
+        const channelId = e.channelId;
+        const timer = setTimeout(() => {
+          this._channelFocusStates.set(channelId, false);
+          this._channelFocusTimers.delete(channelId);
+          // 若无其他频道仍处于焦点状态，同步将有机体模式回退为默认值
+          const stillFocused = Array.from(this._channelFocusStates.values()).some(v => v);
+          if (!stillFocused) {
+            this._setModeBySceneAttention(this._defaultMode, 'scene_attention_timeout');
+          }
+          this._updateOrganismAttention();
+          logger.debug('频道焦点超时，自动重置', { channelId, duration_ms: effectiveDuration });
+        }, effectiveDuration);
+        this._channelFocusTimers.set(e.channelId, timer);
+
+        // 频道进入焦点 → 有机体同步切换到 focused 模式（加速心跳与防抖响应）
+        // 不依赖 scheduleFocusReset：超时由上方 per-channel timer 统一管理
+        this._setModeBySceneAttention('focused', `scene_attention_${e.channelId}`);
+      } else {
+        // 显式取消焦点（如机器人离开群组），若无其他频道仍聚焦则退出 focused 模式
+        const anyFocused = Array.from(this._channelFocusStates.values()).some(v => v);
+        if (!anyFocused) {
+          this._setModeBySceneAttention(this._defaultMode, 'scene_attention_unfocused');
+        }
+      }
+
       this._updateOrganismAttention();
-    });
+    };
+    EventBus.instance.subscribe('SceneAttentionChangedEvent', this._sceneAttentionHandler);
 
     logger.info("生命时钟管理器初始化完成", {
       focused_interval_ms: this._focusedIntervalMs,
@@ -103,7 +132,6 @@ export class LifeClockManager {
       focus_duration_ms: this._focusDurationMs,
       focus_on_any_chat: this._focusOnAnyChat,
       summon_keywords: this._summonKeywords,
-      source_focus_policies: this._sourceFocusPolicies,
       active_thought_modes: Array.from(this._activeThoughtModes),
       heartbeat_enabled: this._heartbeatEnabled,
     });
@@ -132,34 +160,35 @@ export class LifeClockManager {
 
   /**
    * 启动心跳循环
+   * 仅在当前模式属于 activeThoughtModes 时才调度下一次心跳；
+   * 若模式切换为 standby，循环自然终止，不打印跳过日志。
    */
   private startHeartbeatLoop(): void {
     if (!this._isRunning) return;
 
+    // 当前模式不需要主动思维时不调度心跳，避免无用定时器和噪音日志
+    if (!this._activeThoughtModes.has(this._mode)) return;
+
     const interval = this._mode === "focused" ? this._focusedIntervalMs : this._ambientIntervalMs;
 
-    this._timer = setTimeout(async () => {
+    this._timer = setTimeout(async () => {  
       if (!this._isRunning) return;
 
       try {
         // 检查Python AI层是否就绪
-        if (!AIProxy.instance.isReady) {
+        if (!this._aiProxy.isReady) {
           logger.warn("Python AI层未就绪，跳过本次心跳");
-          return;
-        }
-
-        // 仅在允许主动思维的模式下触发生命心跳
-        if (!this._activeThoughtModes.has(this._mode)) {
-          logger.debug("当前模式不触发主动思维，跳过心跳", { mode: this._mode });
+          // AI未就绪时仍继续循环（稍后重试），但不触发主动思维
+          this.startHeartbeatLoop();
           return;
         }
 
         // 发送生命心跳，触发主动思维
-        await AIProxy.instance.sendLifeHeartbeat({ attention_mode: this._mode });
+        await this._aiProxy.sendLifeHeartbeat({ attention_mode: this._mode });
       } catch (error) {
         logger.error("生命心跳执行异常", { error: (error as Error).message });
       } finally {
-        // 继续下一次循环
+        // 继续下一次循环（若模式已离开 activeThoughtModes，循环自然停止）
         this.startHeartbeatLoop();
       }
     }, interval);
@@ -169,7 +198,8 @@ export class LifeClockManager {
    * 消息触发注意力状态变化：支持“呼唤后聚焦”与“任意聊天聚焦”两种策略
    */
   public onUserMessage(content: string, sourceType: string = "unknown"): void {
-    if (!this._isRunning || !this._heartbeatEnabled) return;
+    // 无论心跳是否启用，焦点状态变更都要生效（影响防抖时间窗口）
+    if (!this._isRunning) return;
     const normalized = String(content || "");
     const normalizedSource = String(sourceType || "unknown").toLowerCase();
     const policy = this.resolveSourcePolicy(normalizedSource);
@@ -276,6 +306,21 @@ export class LifeClockManager {
   }
 
   /**
+   * 由 SceneAttentionChangedEvent 驱动的模式切换。
+   * 与 setMode() 的区别：不调用 scheduleFocusReset，因为焦点超时
+   * 完全由 _sceneAttentionHandler 内的 per-channel 计时器统一管理。
+   */
+  private _setModeBySceneAttention(mode: AttentionMode, reason: string): void {
+    if (this._mode === mode) return;
+    const prev = this._mode;
+    this._mode = mode;
+    // 清除 onUserMessage 路径可能遗留的全局焦点重置计时器
+    this.clearFocusResetTimer();
+    logger.info('注意力模式切换', { from: prev, to: mode, reason });
+    this.restartLoop();
+  }
+
+  /**
    * 获取当前时钟状态
    */
   public get state(): { isRunning: boolean; mode: AttentionMode } {
@@ -321,18 +366,43 @@ export class LifeClockManager {
     }
     this._stickyFocusSource = null;
     this.clearFocusResetTimer();
+    // 取消订阅事件，避免内存泄漏
+    if (this._sceneAttentionHandler) {
+      EventBus.instance.unsubscribe('SceneAttentionChangedEvent', this._sceneAttentionHandler);
+      this._sceneAttentionHandler = null;
+    }
+    // 清理所有 per-channel 焦点计时器
+    for (const timer of this._channelFocusTimers.values()) {
+      clearTimeout(timer);
+    }
+    this._channelFocusTimers.clear();
+    this._channelFocusStates.clear();
   }
 
   private resolveSourcePolicy(sourceType: string): SourceAttentionPolicy {
-    const policy = this._sourceFocusPolicies[sourceType] || this._sourceFocusPolicies.unknown;
-    if (!policy) {
-      return "chat_or_wake_focus_with_timeout";
+    return this._sourceFocusPolicies[sourceType]
+      ?? this._sourceFocusPolicies["unknown"]
+      ?? "chat_or_wake_focus_with_timeout";
+  }
+
+  /**
+   * 注册来源类型的注意力策略（由插件在激活时注入）。
+   * 重复注册同一 sourceType 时后注册覆盖先注册。
+   */
+  public registerSourcePolicies(policies: Record<string, SourceAttentionPolicy>): void {
+    for (const [sourceType, policy] of Object.entries(policies)) {
+      this._sourceFocusPolicies[sourceType] = policy;
     }
-    return policy;
+    logger.info("来源注意力策略已更新", { policies: this._sourceFocusPolicies });
   }
 
   public registerTrigger(trigger: AttentionTrigger): void {
     this._triggers.set(trigger.id, trigger);
+  }
+
+  /** 查询指定频道的当前焦点状态（true = focused） */
+  public getChannelFocused(channelId: string): boolean {
+    return this._channelFocusStates.get(channelId) === true;
   }
 
   public unregisterTrigger(triggerId: string): void {
@@ -347,14 +417,21 @@ export class LifeClockManager {
 
   private evaluateTriggers(content: string, sourceType: string): AttentionTriggerResult {
     for (const trigger of this._triggers.values()) {
-      const result = trigger.evaluate({
-        content,
-        sourceType,
-        summonKeywords: this._summonKeywords,
-        focusOnAnyChat: this._focusOnAnyChat,
-      });
-      if (result.matched) {
-        return result;
+      try {
+        const result = trigger.evaluate({
+          content,
+          sourceType,
+          summonKeywords: this._summonKeywords,
+          focusOnAnyChat: this._focusOnAnyChat,
+        });
+        if (result.matched) {
+          return result;
+        }
+      } catch (error) {
+        logger.error('注意力触发器执行异常', {
+          trigger_id: trigger.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return { matched: false };

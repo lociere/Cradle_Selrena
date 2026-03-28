@@ -12,6 +12,7 @@ import {
   IDisposable,
   IKeyValueDB,
   IPluginLogger,
+  IPluginShortTermMemory,
   PerceptionEvent,
   SubAgentProfile,
 } from '../plugin/sdk';
@@ -50,6 +51,8 @@ export interface IPluginHostService {
   createLogger(module: string): IPluginLogger;
   /** 创建指定插件的 K/V 存储实例 */
   createStorage(pluginId: string): IKeyValueDB;
+  /** 创建指定插件的短期记忆实例 */
+  createShortTermMemory(pluginId: string): IPluginShortTermMemory;
 
   // ── 事件总线 ──────────────────────────────────────────────
   /**
@@ -80,8 +83,13 @@ export interface IPluginHostService {
   reportSceneAttention(
     pluginId: string,
     channelId: string,
-    focused: boolean
+    focused: boolean,
+    durationMs?: number
   ): void;
+  /** 查询指定频道当前是否处于焦点状态 */
+  isSceneFocused(channelId: string): boolean;
+  /** 注册来源类型的注意力策略（由插件在激活时注入） */
+  registerSourcePolicies(pluginId: string, policies: Record<string, string>): void;
 
   // ── 子代理注册 ────────────────────────────────────────────
   /** 注册子代理，返回用于注销的 IDisposable */

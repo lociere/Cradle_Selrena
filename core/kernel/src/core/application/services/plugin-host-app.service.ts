@@ -14,6 +14,7 @@ import {
   IDisposable,
   IKeyValueDB,
   IPluginLogger,
+  IPluginShortTermMemory,
   DomainEvent,
   PerceptionEvent,
   SubAgentProfile,
@@ -25,8 +26,10 @@ import { ConfigManager } from '../../foundation/config/config-manager';
 import { EventBus } from '../../foundation/event-bus/event-bus';
 import { resolveRepoRoot } from '../../foundation/utils/path-utils';
 import { PluginStorageRepository } from '../../foundation/storage/repositories/plugin-storage-repository';
+import { PluginShortTermMemoryRepository } from '../../foundation/storage/repositories/plugin-short-term-memory-repository';
 import { SubAgentRegistry } from '../../foundation/agent/sub-agent-registry';
 import { PerceptionAppService } from './perception-app.service';
+import { LifeClockManager } from '../../domain/organism/life-clock/life-clock-manager';
 
 export class PluginHostAppService implements IPluginHostService {
   constructor(private readonly _perceptionService: PerceptionAppService) {}
@@ -38,8 +41,8 @@ export class PluginHostAppService implements IPluginHostService {
     return {
       app: { app_version: cfg.app.app_version },
       plugin: {
-        plugin_root_dir: cfg.plugin.plugin_root_dir,
-        sandbox: { timeout_ms: cfg.plugin.sandbox.timeout_ms },
+        plugin_root_dir: cfg.kernel.plugin.plugin_root_dir,
+        sandbox: { timeout_ms: cfg.kernel.plugin.sandbox.timeout_ms },
       },
     };
   }
@@ -60,6 +63,10 @@ export class PluginHostAppService implements IPluginHostService {
 
   createStorage(pluginId: string): IKeyValueDB {
     return new PluginStorageRepository(pluginId);
+  }
+
+  createShortTermMemory(pluginId: string): IPluginShortTermMemory {
+    return new PluginShortTermMemoryRepository(pluginId);
   }
 
   // ── 事件总线 ──────────────────────────────────────────────
@@ -99,12 +106,22 @@ export class PluginHostAppService implements IPluginHostService {
 
   // ── 场景注意力 ────────────────────────────────────────────
 
-  reportSceneAttention(pluginId: string, channelId: string, focused: boolean): void {
+  reportSceneAttention(pluginId: string, channelId: string, focused: boolean, durationMs?: number): void {
     EventBus.instance.publish(
       new SceneAttentionChangedEvent(
-        { channelId, focused, pluginId },
+        { channelId, focused, pluginId, durationMs },
         createTraceContext()
       )
+    );
+  }
+
+  isSceneFocused(channelId: string): boolean {
+    return LifeClockManager.instance.getChannelFocused(channelId);
+  }
+
+  registerSourcePolicies(_pluginId: string, policies: Record<string, string>): void {
+    LifeClockManager.instance.registerSourcePolicies(
+      policies as Record<string, import('@cradle-selrena/protocol').SourceAttentionPolicy>,
     );
   }
 

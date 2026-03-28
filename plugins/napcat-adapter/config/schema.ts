@@ -28,9 +28,6 @@ export const NapcatPluginConfigSchema = z
         ignore_self: z.boolean().default(true),
         private_enabled: z.boolean().default(true),
         group_enabled: z.boolean().default(true),
-        group_policy: z
-          .enum(['all', 'mention_only', 'wake_word_only'])
-          .default('wake_word_only'),
         wake_words: z.array(z.string()).default([]),
         strip_self_mention: z.boolean().default(true),
         strip_leading_wake_words: z.boolean().default(true),
@@ -42,6 +39,22 @@ export const NapcatPluginConfigSchema = z
             group: z.number().default(6),
           })
           .default({}),
+        /**
+         * 唤醒后的焦点持续时长（毫秒），可选，供本插件覆盖内核全局值。
+         * 不配置时使用内核全局配置 configs/ai.yaml → inference.life_clock.focus_duration_ms。
+         */
+        focus_duration_ms: z.number().int().positive().optional(),
+        /**
+         * 来源类型→注意力策略映射（插件激活时注入内核 LifeClockManager）。
+         * 可选值: always_focused | wake_word_focus | wake_word_focus_with_timeout | chat_or_wake_focus_with_timeout | ignore
+         */
+        source_focus_policies: z
+          .record(z.string(), z.string())
+          .default({
+            private: 'always_focused',
+            group: 'wake_word_focus_with_timeout',
+          }),
+
         multimodal: z
           .object({
             enabled: z.boolean().default(false),
@@ -73,7 +86,14 @@ export const NapcatPluginConfigSchema = z
         nickname_cache_ttl_ms: z.number().default(300000),
       })
       .default({}),
+    memory: z
+      .object({
+        enabled: z.boolean().default(false),
+        /** 唤醒时携带的群聊背景消息条数上限 */
+        group_context_size: z.number().int().min(1).max(50).default(20),
+      })
+      .default({}),
   })
-  .passthrough(); // 保留 speech/memory 等扩展字段
+  .passthrough(); // 保留 speech 等扩展字段
 
 export type NapcatPluginConfig = z.infer<typeof NapcatPluginConfigSchema>;

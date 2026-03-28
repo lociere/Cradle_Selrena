@@ -18,9 +18,9 @@ import {
   StateSyncEvent,
   createIPCRequest,
 } from "@cradle-selrena/protocol";
-import { ConfigManager } from "../config/config-manager";
-import { getLogger } from "../logger/logger";
-import { EventBus } from "../event-bus/event-bus";
+import { ConfigManager } from "../../foundation/config/config-manager";
+import { getLogger } from "../../foundation/logger/logger";
+import { EventBus } from "../../foundation/event-bus/event-bus";
 
 const logger = getLogger("ipc-server");
 
@@ -87,7 +87,7 @@ export class IPCServer {
 
     const config = ConfigManager.instance.getConfig();
     // Ensure bind address doesn't contain stray whitespace or line endings.
-    let bindAddress = (config.ipc.bind_address || "").toString().trim();
+    let bindAddress = (config.kernel.ipc.bind_address || "").toString().trim();
 
     // Validate bind address format; fall back to a safe default if invalid.
     const bindMatch = /^tcp:\/\/([^:]+):(\d+)$/.exec(bindAddress);

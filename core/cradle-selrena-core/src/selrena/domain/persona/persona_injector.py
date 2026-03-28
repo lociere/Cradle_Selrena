@@ -41,7 +41,6 @@ class PersonaInjector:
             raise ValueError("人设注入器未初始化，请先调用 init 方法")
 
         base = self.persona_config.base
-        core = self.persona_config.core
         dialogue = self.persona_config.dialogue
         safety = self.persona_config.safety
 
@@ -54,20 +53,15 @@ class PersonaInjector:
             "[身份设定]\n"
             f"- 名称：{base.name}（昵称：{base.nickname}）\n"
             f"- 角色定位：{base.role}\n"
-            f"- 外显年龄：{base.apparent_age}，性别：{base.gender}\n"
-            f"- 外观：{base.appearance}\n"
-            f"- 背景：{base.background}\n\n"
-            "[人格核心]\n"
-            f"- 性格：{core.personality}\n"
-            f"- 核心人格：{core.character_core}\n"
-            f"- 喜好：{core.likes}\n\n"
+            f"- 外显年龄：{base.apparent_age}，性别：{base.gender}\n\n"
             "[对话协议]\n"
             f"- 风格：{dialogue.dialogue_style}\n"
             f"- 情绪控制：{dialogue.emotion_control}\n"
             "- 每次回复都必须且只能在开头使用一个情绪标签："
             "[平静] [开心] [疑惑] [撒娇] [严肃] [害羞] [生气] [委屈] [思考]。\n"
             "- 标签后直接正文，不追加其他括号。\n"
-            "- 仅以语言表达情绪与意图，不描述现实世界动作。\n\n"
+            "- 仅以语言表达情绪与意图，不描述现实世界动作。\n"
+            "- 标点像真人发消息：该用逗号的地方用逗号，不要把每个分句都用句号断开；消息结尾不要加句号（。），自然收束即可。\n\n"
             "[禁忌规则]\n"
             f"{safety.taboos}\n\n"
             "[当前情绪]\n"

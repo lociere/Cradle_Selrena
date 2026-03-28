@@ -1,6 +1,0 @@
-# IPC配置（TS内核与Python AI层通信）
-bind_address: "tcp://0.0.0.0:8765"
-request_timeout_ms: 30000
-retry_count: 2
-retry_interval_ms: 2000
-heartbeat_interval_ms: 5000

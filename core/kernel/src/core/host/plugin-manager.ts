@@ -258,6 +258,7 @@ export class PluginManager {
   ): ExtensionContext {
     const subscriptions: IDisposable[] = [];
     const storage = this._hostService.createStorage(pluginId);
+    const shortTermMemory = this._hostService.createShortTermMemory(pluginId);
     const frozenConfig = this.hasPluginPermission(permissions, Permission.CONFIG_READ_SELF)
       ? Object.freeze({ ...pluginConfig })
       : Object.freeze({});
@@ -271,16 +272,44 @@ export class PluginManager {
         set: (key: string, value: unknown) => storage.set(key, value),
         delete: (key: string) => storage.delete(key),
       },
+      shortTermMemory: {
+        append: async (entry) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.MEMORY_SHORT_TERM, "追加短期记忆");
+          return shortTermMemory.append(entry);
+        },
+        getRecent: async (sceneId, limit) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.MEMORY_SHORT_TERM, "读取短期记忆");
+          return shortTermMemory.getRecent(sceneId, limit);
+        },
+        getByType: async (sceneId, messageType, limit) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.MEMORY_SHORT_TERM, "按类型查询短期记忆");
+          return shortTermMemory.getByType(sceneId, messageType, limit);
+        },
+        clearScene: async (sceneId) => {
+          this.assertPluginPermission(pluginId, permissions, Permission.MEMORY_SHORT_TERM, "清空短期记忆");
+          return shortTermMemory.clearScene(sceneId);
+        },
+      },
       subscriptions,
       perception: {
-        inject: async (event) => {
+        inject: (event) => {
           this.assertPluginPermission(pluginId, permissions, Permission.PERCEPTION_WRITE, "注入感知事件");
-          await this._hostService.injectPerception(event);
+          // Fire-and-forget：inject 立即返回，AI 响应通过 EventBus 异步回传
+          void this._hostService.injectPerception(event).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._logger.error(`插件 ${pluginId} 感知注入失败`, { error: msg, trace_id: event.id });
+          });
         },
       },
       sceneAttention: {
-        reportSceneAttention: (channelId: string, focused: boolean) => {
-          this._hostService.reportSceneAttention(pluginId, channelId, focused);
+        reportSceneAttention: (channelId: string, focused: boolean, durationMs?: number) => {
+          this._hostService.reportSceneAttention(pluginId, channelId, focused, durationMs);
+        },
+        isSceneFocused: (channelId: string) => {
+          return this._hostService.isSceneFocused(channelId);
+        },
+        registerSourcePolicies: (policies: Record<string, string>) => {
+          this._hostService.registerSourcePolicies(pluginId, policies);
         },
       },
       bus: {
@@ -345,7 +374,18 @@ export class PluginManager {
     let pluginConfig: Record<string, unknown> = {};
 
     if (!(await fs.pathExists(pluginConfigPath))) {
-      return pluginConfig;
+      // 插件提供了 configSchema 时，自动生成默认配置文件
+      if (plugin.configSchema && typeof plugin.configSchema.safeParse === "function") {
+        const { ConfigManager } = await import("../foundation/config/config-manager");
+        const generated = await ConfigManager.instance.generatePluginDefaults(pluginId, plugin.configSchema);
+        if (generated && await fs.pathExists(pluginConfigPath)) {
+          const raw = await fs.readFile(pluginConfigPath, "utf-8");
+          pluginConfig = yaml.parse(raw) ?? {};
+        }
+      }
+      if (Object.keys(pluginConfig).length === 0) {
+        return pluginConfig;
+      }
     }
 
     try {

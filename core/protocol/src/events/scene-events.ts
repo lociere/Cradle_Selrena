@@ -15,16 +15,19 @@ export class SceneAttentionChangedEvent extends DomainEvent {
   public readonly channelId: string;
   public readonly focused: boolean;
   public readonly pluginId: string;
+  /** 插件自定义的焦点持续时长（ms）；未提供时由 LifeClockManager 使用全局默认值 */
+  public readonly durationMs?: number;
   public readonly trace_context: TraceContext;
 
   constructor(
-    payload: { channelId: string; focused: boolean; pluginId: string },
+    payload: { channelId: string; focused: boolean; pluginId: string; durationMs?: number },
     trace_context?: TraceContext
   ) {
     super();
     this.channelId = payload.channelId;
     this.focused = payload.focused;
     this.pluginId = payload.pluginId;
+    this.durationMs = payload.durationMs;
     this.trace_context = trace_context ?? { trace_id: '' };
   }
 }

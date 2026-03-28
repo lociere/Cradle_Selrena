@@ -48,28 +48,6 @@ export function cleanInboundText(
   return value;
 }
 
-/**
- * Determine whether a group message should enter the pipeline based on the
- * configured dispatch policy (all / mention_only / wake_word_only).
- */
-export function shouldDispatchGroupMessage(
-  parsed: ParsedMessage,
-  originalText: string,
-  config: NapcatPluginConfig,
-): boolean {
-  const policy = config.ingress.group_policy;
-  const normalized = String(originalText).toLowerCase();
-  const hasWakeWord = config.ingress.wake_words.some((w) => {
-    const kw = String(w).trim().toLowerCase();
-    return kw && normalized.includes(kw);
-  });
-
-  if (policy === 'all') return true;
-  if (policy === 'mention_only') return parsed.messageTraits.isAtMessage;
-  if (policy === 'wake_word_only') return hasWakeWord;
-  return parsed.messageTraits.isAtMessage || hasWakeWord;
-}
-
 // ─────────────────────────────────────────────────────────────────
 // PerceptionRequest builder
 // ─────────────────────────────────────────────────────────────────
@@ -83,19 +61,11 @@ interface PerceptionInputItem {
   metadata: Record<string, unknown>;
 }
 
-interface PerceptionRequest {
-  input: { items: PerceptionInputItem[] };
-  scene_id: string;
-  familiarity: number;
-  source: {
-    vessel_id: string;
-    source_type: string;
-    source_id: string;
-  };
-  routing: {
-    session_policy: string;
-    actor: { actor_id: string; actor_name: string };
-  };
+/** Cortex 输出：经清洗的文本和媒体项列表，不含任何 Vessel 私有路由字段 */
+export interface CortexOutput {
+  /** 主文本（格式化后供 Soul 阅读） */
+  formattedText: string;
+  inputItems: PerceptionInputItem[];
 }
 
 function buildTextPayload(parsed: ParsedMessage, nickname: string, cleanText: string): string {
@@ -107,22 +77,22 @@ function buildTextPayload(parsed: ParsedMessage, nickname: string, cleanText: st
   if (parsed.messageTraits.hasFace) labels.push('QQ表情');
   if (parsed.messageTraits.hasImage) labels.push('图片');
   if (parsed.messageTraits.hasVideo) labels.push('视频');
+  if (parsed.messageTraits.hasRecord) labels.push('语音消息');
 
   const traits = labels.length > 0 ? labels.join('/') : '普通消息';
   const senderTag =
     parsed.sourceType === 'group'
-      ? `[群成员:${nickname}(${parsed.senderId})]`
-      : `[私聊用户:${nickname}(${parsed.senderId})]`;
-  const replyTag = parsed.replyMessageId ? `[回复ID:${parsed.replyMessageId}]` : '';
-  const replyTargetTag =
-    parsed.replyContext.senderNickname || parsed.replyContext.senderId
-      ? `[回复对象:${parsed.replyContext.senderNickname || parsed.replyContext.senderId}(${parsed.replyContext.senderId || 'unknown'})]`
-      : '';
+      ? `[群成员:${nickname}]`
+      : `[私聊用户:${nickname}]`;
+  // replyTargetTag 仅使用昵称（语义层），不传递任何平台内部 ID
+  const replyTargetTag = parsed.replyContext.senderNickname
+    ? `[回复对象:${parsed.replyContext.senderNickname}]`
+    : '';
   const replyPreviewTag = parsed.replyContext.previewText
     ? `[回复内容预览:${parsed.replyContext.previewText}]`
     : '';
 
-  return [senderTag, `[消息类型:${traits}]`, replyTag, replyTargetTag, replyPreviewTag, cleanText]
+  return [senderTag, `[消息类型:${traits}]`, replyTargetTag, replyPreviewTag, cleanText]
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -132,6 +102,11 @@ function buildTextPayload(parsed: ParsedMessage, nickname: string, cleanText: st
  * Build a standard PerceptionRequest from a parsed message.
  * Returns null if there is no actionable content (empty text, no media).
  */
+/**
+ * Cortex 核心函数：将解析后的消息构建为 Vessel→Soul 边界处的输出。
+ * 返回格式化文本和媒体项列表；不含任何 Vessel 私有路由字段（vessel_id、actor.id 等）。
+ * 返回 null 表示消息无可处理内容（静默丢弃）。
+ */
 export function buildPerceptionRequest(
   parsed: ParsedMessage,
   sceneId: string,
@@ -140,7 +115,7 @@ export function buildPerceptionRequest(
   config: NapcatPluginConfig,
   isMainUser: boolean,
   sessionPolicy = 'by_source',
-): PerceptionRequest | null {
+): CortexOutput | null {
   const inputItems: PerceptionInputItem[] = [];
 
   const textPayload = buildTextPayload(parsed, nickname, cleanText);
@@ -149,24 +124,31 @@ export function buildPerceptionRequest(
       modality: 'text',
       text: textPayload,
       metadata: {
-        sender_id: parsed.senderId,
         sender_nickname: nickname,
-        message_traits: parsed.messageTraits,
-        reply_context: parsed.replyContext,
         is_main_user: isMainUser,
+        // 以下为语义标记，均为布尔值，无任何平台私有字段
+        is_at_message: parsed.messageTraits.isAtMessage,
+        is_reply: parsed.messageTraits.isReplyMessage,
+        is_reply_to_self: parsed.messageTraits.isReplyToSelf,
+        has_sticker: parsed.messageTraits.hasSticker,
+        has_image: parsed.messageTraits.hasImage,
+        has_video: parsed.messageTraits.hasVideo,
+        has_record: parsed.messageTraits.hasRecord,
+        session_policy: sessionPolicy,
       },
     });
   }
 
   for (const item of parsed.mediaItems) {
+    // 只传递语义字段，不展开 item.metadata（避免 NapCat 平台字段渗透入 Soul）
     inputItems.push({
-      ...item,
+      modality: item.modality,
+      uri: item.uri,
+      mime_type: item.mime_type,
+      description_hint: item.description_hint || undefined,
       metadata: {
-        ...item.metadata,
-        sender_id: parsed.senderId,
+        visual_kind: item.metadata['visual_kind'] ?? item.modality,
         sender_nickname: nickname,
-        message_traits: parsed.messageTraits,
-        reply_context: parsed.replyContext,
         is_main_user: isMainUser,
       },
     });
@@ -174,57 +156,59 @@ export function buildPerceptionRequest(
 
   if (inputItems.length === 0) return null;
 
-  return {
-    input: { items: inputItems },
-    scene_id: sceneId,
-    familiarity:
-      parsed.sourceType === 'group'
-        ? Number(config.ingress.familiarity.group ?? 0)
-        : Number(config.ingress.familiarity.private ?? 0),
-    source: {
-      vessel_id: 'napcat-adapter',
-      source_type: parsed.sourceType,
-      source_id: parsed.sourceId,
-    },
-    routing: {
-      session_policy: sessionPolicy,
-      actor: { actor_id: parsed.senderId, actor_name: nickname },
-    },
-  };
+  const formattedText = inputItems.find((i) => i.modality === 'text')?.text ?? cleanText;
+  return { formattedText, inputItems };
 }
 
 // ─────────────────────────────────────────────────────────────────
 // Outbound helpers
 // ─────────────────────────────────────────────────────────────────
 
-const EMOTION_WORDS =
-  '开心|高兴|愉快|害羞|生气|愤怒|难过|委屈|傲娇|好奇|平静|冷静|happy|shy|angry|sulky|curious|sad|calm';
-const PREFIX_PATTERNS = [
-  new RegExp(
-    `^[\\[\\(（【《<]\\s*(?:emotion|情绪)?\\s*[:：-]?\\s*(?:${EMOTION_WORDS})\\s*[\\]\\)）】》>]\\s*`,
-    'i',
-  ),
-  new RegExp(`^(?:emotion|情绪)\\s*[:：-]\\s*(?:${EMOTION_WORDS})\\s*`, 'i'),
-];
+/**
+ * 月见人设全量情绪标签（与 persona_injector.py 同步维护）。
+ * 须包含 persona prompt 中声明的所有标签词，以及 LLM 可能自行输出的扩展同义词。
+ */
+const SELRENA_EMOTION_LABELS =
+  // persona_injector.py 明确定义的标签
+  '平静|开心|疑惑|撒娇|严肃|害羞|生气|委屈|思考' +
+  // 扩展同义词（LLM 可能自行变体）
+  '|高兴|愉快|愤怒|难过|傲娇|好奇|冷静|激动|无奈|担心|兴奋' +
+  // 英文别名
+  '|calm|happy|curious|coy|tsundere|shy|angry|aggrieved|thinking' +
+  '|joyful|pleased|furious|sad|peaceful|worried|excited|sulky';
 
 /**
- * Strip emotion-tag prefixes (e.g. "[emotion: happy]") from outbound reply text.
+ * 全局匹配情绪标签（任意位置）：[开心] [emotion:happy] (emotion:shy) 《思考》 等格式。
+ * 使用全局 gi 标志，一次替换消除所有出现位置。
+ */
+const GLOBAL_EMOTION_TAG_RE = new RegExp(
+  `[\\[\\(（【《<]\\s*(?:emotion|情绪)?\\s*[:：-]?\\s*(?:${SELRENA_EMOTION_LABELS})\\s*[\\]\\)）】》>]`,
+  'gi',
+);
+
+/** 无括号前缀格式：仅匹配行首的 "emotion: happy" 或 "情绪：开心" 声明。 */
+const NAKED_EMOTION_PREFIX_RE = new RegExp(
+  `^(?:emotion|情绪)\\s*[:：-]\\s*(?:${SELRENA_EMOTION_LABELS})\\s*`,
+  'i',
+);
+
+/**
+ * 从出站回复文本中清除全部情绪标签。
+ *
+ * 处理范围：
+ *   - [开心] [emotion:happy] (shy) 等所有位置（前缀、中间、末尾）
+ *   - 无括号前缀：emotion: happy
  */
 export function cleanOutboundReply(text: string): string {
   let value = String(text).replace(/\r/g, '').trim();
   if (!value) return '';
 
-  let changed = true;
-  while (changed && value) {
-    changed = false;
-    for (const pattern of PREFIX_PATTERNS) {
-      const next = value.replace(pattern, '').trim();
-      if (next !== value) {
-        value = next;
-        changed = true;
-      }
-    }
-  }
+  // 全局去除所有括号形式情绪标签（不限位置）
+  value = value.replace(GLOBAL_EMOTION_TAG_RE, '').trim();
+  // 去除无括号前缀形式
+  value = value.replace(NAKED_EMOTION_PREFIX_RE, '').trim();
+  // 清理多余连续空白
+  value = value.replace(/\s{2,}/g, ' ').trim();
 
   return value;
 }

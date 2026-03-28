@@ -87,16 +87,29 @@ export interface IKeyValueDB {
 
 /** 感知注入端口：插件向核心注入感知事件 */
 export interface IPerceptionPort {
-  inject(event: PerceptionEvent): Promise<void>;
+  /** Fire-and-forget：调用立即返回，AI 的回复通过 EventBus action.channel.reply 事件异步回传 */
+  inject(event: PerceptionEvent): void;
 }
 
-/** 场景注意力上报端口：插件通知当前频道聚焦状态 */
+/** 场景注意力上报端口：插件通知当前频道聚焦状态，并查询焦点状态 */
 export interface ISceneAttentionPort {
-  reportSceneAttention(channelId: string, focused: boolean): void;
+  /**
+   * 上报频道聚焦状态变更。
+   * @param durationMs 可选，焦点持续时长（毫秒）；不传则使用全局 focus_duration_ms 配置。
+   */
+  reportSceneAttention(channelId: string, focused: boolean, durationMs?: number): void;
+  /** 查询指定场景（频道）当前是否处于焦点状态 */
+  isSceneFocused(channelId: string): boolean;
+  /**
+   * 注册来源类型的注意力策略。
+   * 由插件在激活时调用，将平台特定的 sourceType → policy 映射注入内核。
+   * 重复注册同一 sourceType 时后注册覆盖先注册。
+   */
+  registerSourcePolicies(policies: Record<string, string>): void;
 }
 
 /**
- * 插件级事件总线端口。
+ * 插件级事件总线端口.
  * 已知系统主题（PluginEventPayloadMap 中列出的）具有完整类型推导；
  * 自定义主题（如 plugin.xxx.*）回退到 unknown。
  */
@@ -120,6 +133,51 @@ export interface IAgentRegistry {
 }
 
 // ─────────────────────────────────────────────
+// 插件短期记忆
+// ─────────────────────────────────────────────
+
+/**
+ * 插件短期记忆条目。
+ * 存储平台特有的富消息上下文（如 @目标、回复链、消息子类型等），
+ * 与 Soul 层的纯文本 ShortTermMemory 互补。
+ */
+export interface PluginMemoryEntry {
+  /** 条目唯一 ID（由系统自动生成） */
+  readonly entry_id: string;
+  /** 场景 ID（如 napcat:group:123456） */
+  readonly scene_id: string;
+  /** 消息方向 */
+  role: "inbound" | "outbound";
+  /** 消息子类型（由插件自定义，如 "text" | "at" | "reply" | "image" | "poke"） */
+  message_type: string;
+  /** 消息文本摘要 */
+  content: string;
+  /** 平台特有的结构化元数据（@目标列表、回复消息 ID、表情 ID 等） */
+  metadata: Record<string, unknown>;
+  /** 创建时间戳（毫秒） */
+  readonly timestamp: number;
+}
+
+/** 创建条目时由插件提供的字段（entry_id / timestamp 由系统填充） */
+export type PluginMemoryEntryInput = Omit<PluginMemoryEntry, "entry_id" | "timestamp">;
+
+/**
+ * 插件短期记忆端口。
+ * 按场景隔离，自动淘汰旧记录，支持按消息类型查询。
+ * 每个插件实例拥有独立的命名空间。
+ */
+export interface IPluginShortTermMemory {
+  /** 追加一条记忆 */
+  append(entry: PluginMemoryEntryInput): Promise<PluginMemoryEntry>;
+  /** 获取指定场景的最近 N 条记忆 */
+  getRecent(sceneId: string, limit?: number): Promise<PluginMemoryEntry[]>;
+  /** 按消息类型过滤查询 */
+  getByType(sceneId: string, messageType: string, limit?: number): Promise<PluginMemoryEntry[]>;
+  /** 清空指定场景的全部记忆 */
+  clearScene(sceneId: string): Promise<void>;
+}
+
+// ─────────────────────────────────────────────
 // 插件系统契约
 // ─────────────────────────────────────────────
 
@@ -129,6 +187,7 @@ export interface ExtensionContext<TConfig = unknown> {
   readonly logger: IPluginLogger;
   readonly config: TConfig;
   readonly storage: IKeyValueDB;
+  readonly shortTermMemory: IPluginShortTermMemory;
   readonly subscriptions: IDisposable[];
   readonly perception: IPerceptionPort;
   readonly sceneAttention: ISceneAttentionPort;
@@ -161,7 +220,6 @@ export interface SystemPlugin<TConfig = unknown> {
 export const PluginSystemEventTopics = {
   ACTION_CHANNEL_REPLY: 'action.channel.reply',
   ACTION_STREAM_STARTED: 'ActionStreamStartedEvent',
-  ACTION_STREAM_CHUNK: 'ActionStreamChunkEvent',
   ACTION_STREAM_COMPLETED: 'ActionStreamCompletedEvent',
   ACTION_STREAM_CANCELLED: 'ActionStreamCancelledEvent',
   PLUGIN_LOADED: 'PluginLoadedEvent',
@@ -205,10 +263,6 @@ export interface PluginStreamBasePayload {
 
 export interface PluginStreamStartedPayload extends PluginStreamBasePayload {}
 
-export interface PluginStreamChunkPayload extends PluginStreamBasePayload {
-  chunk: string;
-}
-
 export interface PluginStreamCompletedPayload extends PluginStreamBasePayload {
   fullText: string;
 }
@@ -235,7 +289,6 @@ export interface PluginErrorPayload extends PluginLifecyclePayload {
 export interface PluginEventPayloadMap {
   'action.channel.reply': ChannelReplyPayload;
   'ActionStreamStartedEvent': PluginStreamStartedPayload;
-  'ActionStreamChunkEvent': PluginStreamChunkPayload;
   'ActionStreamCompletedEvent': PluginStreamCompletedPayload;
   'ActionStreamCancelledEvent': PluginStreamCancelledPayload;
   'PluginLoadedEvent': PluginLifecyclePayload;

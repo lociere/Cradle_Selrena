@@ -75,6 +75,26 @@ export class DBManager {
       PRIMARY KEY (plugin_id, key)
     )`).run();
 
+    // 插件短期记忆（按 plugin_id + scene_id 隔离，存储平台富元数据）
+    this._db.prepare(`CREATE TABLE IF NOT EXISTS plugin_short_term_memory (
+      entry_id      TEXT PRIMARY KEY,
+      plugin_id     TEXT NOT NULL,
+      scene_id      TEXT NOT NULL,
+      role          TEXT NOT NULL,
+      message_type  TEXT NOT NULL,
+      content       TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      timestamp     INTEGER NOT NULL
+    )`).run();
+
+    this._db.prepare(`CREATE INDEX IF NOT EXISTS idx_plugin_stm_scene
+      ON plugin_short_term_memory(plugin_id, scene_id, timestamp)
+    `).run();
+
+    this._db.prepare(`CREATE INDEX IF NOT EXISTS idx_plugin_stm_type
+      ON plugin_short_term_memory(plugin_id, scene_id, message_type, timestamp)
+    `).run();
+
     this._isInitialized = true;
     logger.info('数据库初始化完成');
   }

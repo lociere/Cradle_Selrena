@@ -1,25 +1,27 @@
 /**
- * 全局配置Schema
- * 与protocol层的配置类型100%对齐
+ * 全局配置 Schema（内核层）
+ * 组合 protocol 层各子 Schema 为运行时使用的顶级结构
+ *
+ * 三大配置域映射到三个 YAML 文件：
+ *   app    → configs/app.yaml
+ *   ai     → configs/ai.yaml
+ *   kernel → configs/kernel.yaml
  */
 import { z } from "zod";
 import {
   AppConfigSchema,
   GlobalAIConfigSchema,
-  IPCConfigSchema,
-  LifecycleConfigSchema,
-  MemoryRulesConfigSchema,
-  PluginConfigSchema,
+  KernelConfigSchema,
 } from "@cradle-selrena/protocol";
 
-// 全局根配置Schema
+/** 运行时全局配置根 Schema */
 export const GlobalConfigSchema = z.object({
+  /** 应用元信息与目录路径 */
   app: AppConfigSchema,
+  /** Python AI 层全量配置（人格 · 推理 · LLM 提供商） */
   ai: GlobalAIConfigSchema,
-  ipc: IPCConfigSchema,
-  lifecycle: LifecycleConfigSchema,
-  memory: MemoryRulesConfigSchema,
-  plugin: PluginConfigSchema,
+  /** TS 内核运行时配置（IPC · 生命周期 · 插件沙箱） */
+  kernel: KernelConfigSchema,
 });
 
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

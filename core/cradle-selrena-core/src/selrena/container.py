@@ -91,6 +91,7 @@ class DIContainer:
         self._instances["llm_engine"] = llm_engine
 
         multimodal_router = MultimodalRouter(inference_config=config.inference)
+        multimodal_router.set_llm_engine(llm_engine)   # 延迟注入，避免循环依赖
         self._instances["multimodal_router"] = multimodal_router
 
         # ======================================

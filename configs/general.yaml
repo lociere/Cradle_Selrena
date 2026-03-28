@@ -1,8 +1,0 @@
-# 全局基础配置
-app_name: "Cradle Selrena"
-app_version: "0.1.0"
-log_level: "debug"
-data_dir: "data"
-log_dir: "logs"
-backup_dir: "data/backup"
-auto_backup_interval_hours: 24

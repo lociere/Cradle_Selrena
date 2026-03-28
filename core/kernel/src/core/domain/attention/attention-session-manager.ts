@@ -1,8 +1,6 @@
-import { ChatMessageResponse, createTraceContext, PerceptionCancelRequest, PerceptionMessageRequest } from '@cradle-selrena/protocol';
+import { ChatMessageResponse, createTraceContext, IAICapabilityPort, IActionStreamPort, PerceptionCancelRequest, PerceptionMessageRequest } from '@cradle-selrena/protocol';
 import { ConfigManager } from '../../foundation/config/config-manager';
 import { getLogger } from '../../foundation/logger/logger';
-import { AIProxy } from '../../application/capabilities/inference/ai-proxy';
-import { ActionStreamManager } from '../../application/capabilities/action-stream/action-stream-manager';   
 import { LifeClockManager } from '../organism/life-clock/life-clock-manager';
 
 const logger = getLogger('attention-session-manager');
@@ -29,6 +27,8 @@ export class AttentionSessionManager {
   private _focusedDebounceMs: number = 700;
   private _maxBatchMessages: number = 4;
   private _maxBatchItems: number = 24;
+  private _aiProxy!: IAICapabilityPort;
+  private _actionStream!: IActionStreamPort;
 
   public static get instance(): AttentionSessionManager {
     if (!AttentionSessionManager._instance) {
@@ -39,7 +39,9 @@ export class AttentionSessionManager {
 
   private constructor() {}
 
-  public init(): void {
+  public init(aiProxy: IAICapabilityPort, actionStream: IActionStreamPort): void {
+    this._aiProxy = aiProxy;
+    this._actionStream = actionStream;
     const config = ConfigManager.instance.getConfig();
     const lifeClock = config.ai.inference.life_clock;
     this._debounceMs = lifeClock.ingress_debounce_ms;
@@ -58,13 +60,12 @@ export class AttentionSessionManager {
 
   public async ingest(request: PerceptionMessageRequest): Promise<ChatMessageResponse | null> {
     if (!this._initialized) {
-      this.init();
+      throw new Error('AttentionSessionManager 未初始化，请先调用 init()');
     }
 
     const source = String(request.source || 'default').trim() || 'default';
     const state = this.getSceneState(source);
     this.tryInterruptInFlight(source, state);
-    this.onIngressMessage(request);
 
     return new Promise<ChatMessageResponse | null>((resolve, reject) => {
       state.pending.push({ request, resolve, reject });
@@ -72,7 +73,8 @@ export class AttentionSessionManager {
     });
   }
 
-  public stop(): void {
+  public async stop(): Promise<void> {
+    // 先取消所有定时器和拒绝所有待处理请求
     for (const [source, state] of this._sceneStates.entries()) {
       if (state.timer) {
         clearTimeout(state.timer);
@@ -82,6 +84,9 @@ export class AttentionSessionManager {
       }
       logger.debug('注意力会话状态已清理', { scene_id: source });
     }
+    // 等待所有 in-flight 的 flushScene 链完成
+    const chains = Array.from(this._sceneStates.values()).map((s) => s.chain);
+    await Promise.allSettled(chains);
     this._sceneStates.clear();
   }
 
@@ -100,14 +105,6 @@ export class AttentionSessionManager {
     };
     this._sceneStates.set(source, created);
     return created;
-  }
-
-  private onIngressMessage(request: PerceptionMessageRequest): void {
-    const text = String(request.content?.text || '').trim();
-    LifeClockManager.instance.onUserMessage(
-      text,
-      String(request.source || 'unknown'),
-    );
   }
 
   private scheduleFlush(source: string, state: SceneIngressState): void {
@@ -142,9 +139,9 @@ export class AttentionSessionManager {
       reason: 'new_ingress_interrupt',
     };
 
-    void ActionStreamManager.instance.cancelStream(source, state.inFlightTraceId, 'new_ingress_interrupt').catch(() => {});
+    void this._actionStream.cancelStream(source, state.inFlightTraceId, 'new_ingress_interrupt').catch(() => {});
 
-    void AIProxy.instance.cancelPerception(cancelRequest).catch((error: unknown) => {
+    void this._aiProxy.cancelPerception(cancelRequest).catch((error: unknown) => {
       logger.warn('发送生成中断请求失败', {
         scene_id: source,
         target_trace_id: state.inFlightTraceId,
@@ -182,14 +179,14 @@ export class AttentionSessionManager {
     state.inFlightTraceId = traceId;
     state.cancelRequested = false;
 
-    await ActionStreamManager.instance.startThinkingStream(
+    await this._actionStream.startThinkingStream(
       source,
       traceId,
       String(mergedRequest.source || 'unknown'),
     );
 
     try {
-      const response = await AIProxy.instance.sendPerceptionMessage(mergedRequest as any, traceId);
+      const response = await this._aiProxy.sendPerceptionMessage(mergedRequest, traceId);
       for (let index = 0; index < batch.length - 1; index += 1) {
         batch[index].resolve(null);
       }
@@ -198,7 +195,7 @@ export class AttentionSessionManager {
         scene_id: source,
         batch_size: batch.length,
       });
-      await ActionStreamManager.instance.completeStream(
+      await this._actionStream.completeStream(
         source,
         traceId,
         String(response?.emotion_state?.emotion_type || 'calm'),
@@ -214,7 +211,7 @@ export class AttentionSessionManager {
         trace_id: traceId,
         error: error instanceof Error ? error.message : String(error),
       });
-      await ActionStreamManager.instance.cancelStream(source, traceId, 'generation_failed');
+      await this._actionStream.cancelStream(source, traceId, 'generation_failed');
     } finally {
       if (state.inFlightTraceId === traceId) {
         state.inFlightTraceId = null;
@@ -229,8 +226,12 @@ export class AttentionSessionManager {
     const texts = requests.map(r => r.content?.text).filter(Boolean);
     const mergedText = texts.join(' ');
     const modalities = new Set<string>();
+    const allItems: NonNullable<PerceptionMessageRequest['content']['items']> = [];
     for (const r of requests) {
       r.content?.modality?.forEach(m => modalities.add(m));
+      if (r.content?.items) {
+        allItems.push(...r.content.items);
+      }
     }
 
     return {
@@ -238,10 +239,11 @@ export class AttentionSessionManager {
       sensoryType: tail.sensoryType,
       source: tail.source,
       timestamp: tail.timestamp,
+      familiarity: tail.familiarity,
       content: {
         text: mergedText || undefined,
-        raw: tail.content?.raw,
         modality: Array.from(modalities),
+        items: allItems.length > 0 ? allItems : undefined,
       }
     };
   }

@@ -31,6 +31,7 @@ export interface MessageTraits {
   hasSticker: boolean;
   hasImage: boolean;
   hasVideo: boolean;
+  hasRecord: boolean;
 }
 
 export interface ParsedMessage {
@@ -61,8 +62,11 @@ function guessMimeType(type: 'image' | 'video', uri: string): string {
 }
 
 function classifySpecialImage(data: Record<string, unknown>): 'sticker' | 'image' {
+  // sub_type=1 是 NapCat/OB11 对自定义表情包的标准标记
+  const subType = Number(data['sub_type'] ?? data['subtype'] ?? -1);
+  if (subType === 1) return 'sticker';
   const hint = `${String(data['summary'] ?? '')} ${String(data['file'] ?? '')}`;
-  if (/标准表情|表情|sticker|mface|emoji/i.test(hint)) return 'sticker';
+  if (/动画表情|标准表情|表情|sticker|mface|emoji/i.test(hint)) return 'sticker';
   return 'image';
 }
 
@@ -117,6 +121,7 @@ export function parseMessageSegments(
   let hasSticker = false;
   let hasImage = false;
   let hasVideo = false;
+  let hasRecord = false;
   let replyMessageId = '';
   let recordSource = '';
 
@@ -127,7 +132,9 @@ export function parseMessageSegments(
     const { type, data } = segment;
 
     if (type === 'text') {
-      textParts.push(String(data['text'] ?? ''));
+      // 跳过纯空白段（常见于 @mention 后自动追加的 " " 分隔符）
+      const textVal = String(data['text'] ?? '');
+      if (textVal.trim()) textParts.push(textVal);
       continue;
     }
     if (type === 'at') {
@@ -148,6 +155,8 @@ export function parseMessageSegments(
     }
     if (type === 'record') {
       recordSource = String(data['file'] ?? data['path'] ?? data['url'] ?? '');
+      hasRecord = true;
+      textParts.push('[语音消息]');
       continue;
     }
     if (type === 'image') {
@@ -189,6 +198,29 @@ export function parseMessageSegments(
       }
       continue;
     }
+    // QQ 商城大表情 / 市场表情（mface）
+    if (type === 'mface') {
+      hasSticker = true;
+      textParts.push('[表情包]');
+      const mfaceUrl = String(data['url'] ?? '');
+      if (mfaceUrl && multimodalEnabled) {
+        mediaItems.push({
+          modality: 'image',
+          uri: mfaceUrl,
+          mime_type: 'image/gif',
+          description_hint: String(data['summary'] ?? '表情包'),
+          metadata: {
+            visual_kind: 'sticker',
+          },
+        });
+      }
+      continue;
+    }
+    // JSON / XML 卡片消息（小程序、分享链接等）
+    if (type === 'json' || type === 'xml') {
+      textParts.push('[卡片消息]');
+      continue;
+    }
     if (type === 'file') {
       textParts.push(`[文件:${String(data['name'] ?? data['file'] ?? '未知文件')}]`);
     }
@@ -224,6 +256,7 @@ export function parseMessageSegments(
       hasSticker,
       hasImage,
       hasVideo,
+      hasRecord,
     },
   };
 }

@@ -15,7 +15,6 @@ ingress:
   ignore_self: true
   private_enabled: true
   group_enabled: true
-  group_policy: wake_word_only
   wake_words:
     - 月见
     - Selrena
@@ -27,6 +26,14 @@ ingress:
   familiarity:
     private: 10
     group: 6
+  # 焦点持续时长（ms）。不配置时继承内核全局值（configs/ai.yaml → inference.life_clock.focus_duration_ms）。
+  # 如需此插件单独覆盖全局值，取消注释并填入毫秒数：
+  # focus_duration_ms: 20000
+  # 来源类型 → 注意力策略（由内核 LifeClockManager 管理注意力模式变化）
+  # 可选值: always_focused | wake_word_focus | wake_word_focus_with_timeout | chat_or_wake_focus_with_timeout | ignore
+  source_focus_policies:
+    private: always_focused
+    group: wake_word_focus_with_timeout
   multimodal:
     enabled: true
 
@@ -46,8 +53,7 @@ speech:
 
 memory:
   enabled: true
-  root_dir: data/memory/adapters/napcat
-  max_scene_records: 80
+  group_context_size: 20
 
 routing:
   session_partition:

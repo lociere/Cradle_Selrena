@@ -1,0 +1,68 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  Cradle Selrena — 内核配置 (kernel.yaml)                  ║
+# ║  IPC 通信 / 模块生命周期 / 插件沙箱                       ║
+# ╚════════════════════════════════════════════════════════════╝
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ipc — TS ↔ Python 进程间通信
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ipc:
+  bind_address: "tcp://0.0.0.0:8765"  # ZMQ 绑定地址
+  request_timeout_ms: 30000            # 单次请求超时（ms）
+  retry_count: 2                       # 请求失败重试次数
+  retry_interval_ms: 2000              # 重试间隔（ms）
+  heartbeat_interval_ms: 5000          # Python 心跳检测间隔（ms）
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  lifecycle — 模块启停顺序
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+lifecycle:
+  start_timeout_ms: 30000              # 启动阶段总超时（ms）
+  stop_timeout_ms: 30000               # 停止阶段总超时（ms）
+  module_start_order:                  # 模块启动顺序
+    - config
+    - persistence
+    - ipc
+    - python_ai
+    - plugins
+    - life_clock
+  module_stop_order:                   # 模块停止顺序（通常为启动的逆序）
+    - life_clock
+    - plugins
+    - python_ai
+    - ipc
+    - persistence
+    - config
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  plugin — 插件系统
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+plugin:
+  plugin_root_dir: "plugins"           # 插件根目录（相对项目根）
+  sandbox:
+    enable_isolation: true             # 是否启用插件沙箱隔离
+    timeout_ms: 5000                   # onActivate / onDeactivate 超时（ms）
+    allow_native_modules: false        # 是否允许加载 native 模块
+  default_permissions:                 # 新插件默认权限
+    - CHAT_SEND
+    - MEMORY_READ
+    - MEMORY_WRITE
+    - CONFIG_READ_SELF
+    - CONFIG_WRITE_SELF
+    - CONFIG_READ_GLOBAL
+    - EVENT_SUBSCRIBE
+  plugin_blacklist: []                 # 插件黑名单（阻止加载的插件 ID）
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ingress_gate — 入站防护（速率限制 · 熔断 · 就绪守卫）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ingress_gate:
+  rate_limit_per_source: 30            # 单来源每窗口最大请求数
+  rate_limit_window_ms: 60000          # 滑动窗口时长（ms）
+  max_concurrent_requests: 10          # 全局最大并发处理请求数
+  circuit_breaker_threshold: 5         # 连续失败几次后触发熔断
+  circuit_breaker_recovery_ms: 30000   # 熔断恢复等待时间（ms）

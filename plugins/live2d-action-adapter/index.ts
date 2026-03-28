@@ -14,7 +14,6 @@ class Live2dActionAdapterPlugin extends BasePlugin {
     this.logger.info('Live2D Action Adapter activated');
 
     this.subscribe('ActionStreamStartedEvent', (p) => { void this._append('ActionStreamStartedEvent', p); });
-    this.subscribe('ActionStreamChunkEvent', (p) => { void this._append('ActionStreamChunkEvent', p); });
     this.subscribe('ActionStreamCompletedEvent', (p) => { void this._append('ActionStreamCompletedEvent', p); });
     this.subscribe('ActionStreamCancelledEvent', (p) => { void this._append('ActionStreamCancelledEvent', p); });
   }

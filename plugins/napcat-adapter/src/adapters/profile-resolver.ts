@@ -36,14 +36,20 @@ export class SenderProfileResolver {
     if (cached && cached.expiresAt > now) return cached.value;
 
     const sender = event.sender ?? {};
-    let nickname = String(sender.card ?? sender.nickname ?? '').trim();
+    // card 可能为空字符串（群员未设置群昵称），此时应回退到 nickname
+    // 使用 || 而非 ?? ：空字符串视为无效值
+    const card = String(sender.card ?? '').trim();
+    const fallbackNick = String(sender.nickname ?? '').trim();
+    let nickname = card || fallbackNick;
 
     if (!nickname) {
       nickname = await this._fetchNickname(parsed);
     }
 
     if (!nickname) {
-      nickname = `QQ-${parsed.senderId || 'unknown'}`;
+      // 取 senderId 末 4 位作为匿名短码，避免将平台私有 ID（QQ 号）写入 Soul 记忆
+      const shortId = String(parsed.senderId || '').slice(-4) || '????';
+      nickname = `用户-${shortId}`;
     }
 
     this._cache.set(cacheKey, { value: nickname, expiresAt: now + this._cacheTtlMs });
@@ -58,18 +64,17 @@ export class SenderProfileResolver {
           user_id: parsed.senderId,
           no_cache: false,
         }) as Record<string, unknown> | null;
-        return String(
-          (res && (res['card'] ?? res['nickname'] ?? (res['data'] as Record<string, unknown> | undefined)?.['card'] ?? (res['data'] as Record<string, unknown> | undefined)?.['nickname'])) ?? '',
-        ).trim();
+        // NapCat 返回 data 字段中含 card/nickname，card 可能为空字符串
+        const resCard = String(res?.['card'] ?? '').trim();
+        const resNick = String(res?.['nickname'] ?? '').trim();
+        return resCard || resNick;
       }
 
       const res = await this._callAction('get_stranger_info', {
         user_id: parsed.senderId,
         no_cache: false,
       }) as Record<string, unknown> | null;
-      return String(
-        (res && (res['nickname'] ?? (res['data'] as Record<string, unknown> | undefined)?.['nickname'])) ?? '',
-      ).trim();
+      return String(res?.['nickname'] ?? '').trim();
     } catch (err) {
       this._logger.warn('获取发送者昵称失败，使用回退值', {
         source_type: parsed.sourceType,

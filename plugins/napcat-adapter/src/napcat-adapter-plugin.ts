@@ -4,52 +4,36 @@
  * 层级：Vessel — 将 OneBot 11 协议数据清洗为标准 PerceptionEvent 后注入 Soul。
  *
  * 数据流：
- *   Napcat WS → onJsonMessage() → normalizeOB11Frames() → _processEvent()
- *     → parseMessageSegments() → buildPerceptionRequest() → ctx.perception.inject()
- *   [Soul reply] → action.channel.reply → _sendReply() → Napcat WS
+ *   Napcat WS → onJsonMessage()
+ *     → normalizeOB11Frames() → InboundPipeline.process() → ctx.perception.inject()
+ *   [Soul reply] → action.channel.reply → ReplyRouter.sendReply() → Napcat WS
+ *
+ * 模块结构：
+ *   inbound/inbound-pipeline.ts   — 入站消息处理（过滤、解析、感知注入）
+ *   outbound/reply-router.ts      — 出站回复路由与发送
+ *   memory/context-memory-manager.ts — 插件短期记忆读写（与 Soul 本体 STM 隔离）
+ *   adapters/                     — OB11 协议适配层（Cortex）
  */
 
-import crypto from 'crypto';
-
-import type { PerceptionEvent, ChannelReplyPayload } from '@cradle-selrena/protocol';
+import type { ChannelReplyPayload } from '@cradle-selrena/protocol';
 import { WsAdapterPlugin } from '@cradle-selrena/plugin-sdk';
 import { NapcatPluginConfig, NapcatPluginConfigSchema } from '../config/schema';
-import { parseMessageSegments } from './adapters/message-parser';
-import {
-  cleanInboundText,
-  cleanOutboundReply,
-  shouldDispatchGroupMessage,
-  buildPerceptionRequest,
-} from './adapters/perception-builder';
 import { normalizeOB11Frames } from './adapters/ob11-normalizer';
 import { SenderProfileResolver } from './adapters/profile-resolver';
 import type { OB11MessageEvent } from './adapters/ob11-types';
-
-// ─────────────────────────────────────────────────────────────────
-// Internal types
-// ─────────────────────────────────────────────────────────────────
-
-interface ReplyTarget {
-  target_type: 'group' | 'private';
-  target_id: string;
-  sender_id: string;
-  expiresAt: number;
-}
-
-// reply target TTL: 5 minutes
-const REPLY_TARGET_TTL_MS = 5 * 60 * 1_000;
+import { ContextMemoryManager } from './memory/context-memory-manager';
+import { ReplyRouter } from './outbound/reply-router';
+import { InboundPipeline } from './inbound/inbound-pipeline';
 
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Resolve access token from config.
- * token_from_secrets=true → only from ENV, never falls back to plaintext.
+ * 从配置解析 access token。
+ * token_from_secrets=true → 仅从 ENV 读取，不回退到明文。
  */
-function resolveAccessToken(
-  transport: NapcatPluginConfig['transport'],
-): string {
+function resolveAccessToken(transport: NapcatPluginConfig['transport']): string {
   const envKey = String(transport.access_token_env ?? '').trim();
   if (envKey) {
     const envToken = String(process.env[envKey] ?? '').trim();
@@ -59,18 +43,28 @@ function resolveAccessToken(
   return String(transport.access_token ?? '').trim();
 }
 
+/** NapCat action 请求超时（ms） */
+const ACTION_TIMEOUT_MS = 5_000;
+
+interface PendingCall {
+  resolve: (data: unknown) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
 // ─────────────────────────────────────────────────────────────────
-// Plugin class
+// Plugin class（生命周期编排，不含业务逻辑）
 // ─────────────────────────────────────────────────────────────────
 
 export class NapcatAdapterPlugin extends WsAdapterPlugin<NapcatPluginConfig> {
-  private _profileResolver: SenderProfileResolver | null = null;
+  private _pipeline: InboundPipeline | null = null;
+  private _router: ReplyRouter | null = null;
 
-  /** eventId → reply routing info (with TTL) */
-  private readonly _replyTargets = new Map<string, ReplyTarget>();
-
-  /** sceneIds with active input — used for bulk focus-off on disconnect */
+  /** 持有活跃场景 ID 的集合，断连时用于批量关闭注意力 */
   private readonly _activeChannels = new Set<string>();
+
+  /** 等待 NapCat action echo 响应的暂挂调用表 */
+  private readonly _pendingCalls = new Map<string, PendingCall>();
 
   constructor() {
     super(NapcatPluginConfigSchema);
@@ -82,27 +76,64 @@ export class NapcatAdapterPlugin extends WsAdapterPlugin<NapcatPluginConfig> {
     const transport = this.config.transport;
     const accessToken = resolveAccessToken(transport);
 
-    this._profileResolver = new SenderProfileResolver(
+    const profileResolver = new SenderProfileResolver(
       this.logger,
-      async () => null, // callAction: relies on event.sender built-in nickname
+      (action, params) => this._callAction(action, params),
       this.config.runtime.nickname_cache_ttl_ms,
     );
 
-    // Periodic GC for expired reply routing records
-    this.registerInterval(() => this._gcReplyTargets(), 60_000);
+    const memoryManager = new ContextMemoryManager(
+      this.ctx.shortTermMemory,
+      this.config,
+      this.logger,
+    );
 
+    this._router = new ReplyRouter(
+      this.config,
+      this.logger,
+      (data) => this.sendRaw(data),
+      memoryManager,
+    );
+
+    this._pipeline = new InboundPipeline(
+      this.config,
+      this.logger,
+      this.ctx.perception,
+      this.ctx.sceneAttention,
+      this._activeChannels,
+      this._router,
+      profileResolver,
+      memoryManager,
+      (action, params) => this._callAction(action, params),
+    );
+
+    this.registerInterval(() => this._router!.gc(), 60_000);
     this.startWsServer(transport.host, transport.port, accessToken);
-    this.subscribe('action.channel.reply', (payload) => this._sendReply(payload));
+    this.subscribe('action.channel.reply', (payload) =>
+      this._router!.sendReply(payload as ChannelReplyPayload),
+    );
+
+    // 将插件配置的注意力策略注入内核 LifeClockManager
+    this.ctx.sceneAttention.registerSourcePolicies(
+      this.config.ingress.source_focus_policies,
+    );
 
     this.logger.info(
-      `Napcat Adapter v0.2.0 started — ws://${transport.host}:${transport.port}`,
+      `Napcat Adapter v0.3.0 started — ws://${transport.host}:${transport.port}`,
     );
   }
 
   protected override async deactivate(): Promise<void> {
-    this._replyTargets.clear();
+    // 清除所有暂挂调用，避免断连后泄漏 Promise
+    for (const [, pending] of this._pendingCalls) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('plugin deactivated'));
+    }
+    this._pendingCalls.clear();
+    this._router?.clear();
     this._activeChannels.clear();
-    this._profileResolver = null;
+    this._pipeline = null;
+    this._router = null;
     this.logger.info('[napcat] Napcat Adapter stopped');
     await super.deactivate(); // closes WS server
   }
@@ -117,165 +148,57 @@ export class NapcatAdapterPlugin extends WsAdapterPlugin<NapcatPluginConfig> {
   }
 
   protected override async onJsonMessage(data: unknown): Promise<void> {
+    // 优先检查 echo 帧（NapCat action 响应），避免误入消息管道
+    if (data && typeof data === 'object' && 'echo' in data) {
+      const frame = data as Record<string, unknown>;
+      const echo = String(frame['echo'] ?? '');
+      const pending = this._pendingCalls.get(echo);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this._pendingCalls.delete(echo);
+        const retcode = Number(frame['retcode'] ?? frame['ret_code'] ?? 0);
+        if (retcode !== 0) {
+          pending.reject(new Error(`NapCat action failed: retcode=${retcode}`));
+        } else {
+          pending.resolve(frame['data'] ?? null);
+        }
+        return;
+      }
+    }
+
+    if (!this._pipeline) return;
     try {
       const normalizedEvents = normalizeOB11Frames(data);
       for (const event of normalizedEvents) {
-        await this._processEvent(event as OB11MessageEvent);
+        await this._pipeline.process(event as OB11MessageEvent);
       }
     } catch (err) {
       this.logger.error(
         '[napcat] message processing failed: ' +
           (err instanceof Error ? err.message : String(err)),
+        { stack: err instanceof Error ? err.stack : undefined },
       );
     }
   }
 
-  // ── Inbound pipeline ─────────────────────────────────────────
-
-  private async _processEvent(event: OB11MessageEvent): Promise<void> {
-    if ((event as Record<string, unknown>)['post_type'] !== 'message') return;
-
-    const botSelfId = String(this.config.main_user.qq ?? '');
-
-    if (this.config.ingress.ignore_self && String(event.user_id) === botSelfId) return;
-    if (this.config.ingress.blocked_user_ids.includes(String(event.user_id))) return;
-    if (
-      event.message_type === 'group' &&
-      this.config.ingress.blocked_group_ids.includes(String(event.group_id ?? ''))
-    )
-      return;
-    if (event.message_type === 'private' && !this.config.ingress.private_enabled) return;
-    if (event.message_type === 'group' && !this.config.ingress.group_enabled) return;
-
-    // Cortex: parse OB11 message segments into structured data
-    let parsed;
-    try {
-      parsed = parseMessageSegments(event, botSelfId, this.config);
-    } catch (err) {
-      this.logger.warn(
-        '[napcat] message parse skipped: ' +
-          (err instanceof Error ? err.message : String(err)),
-      );
-      return;
-    }
-
-    // Group dispatch policy gate
-    if (
-      parsed.sourceType === 'group' &&
-      !shouldDispatchGroupMessage(parsed, parsed.text, this.config)
-    )
-      return;
-
-    const nickname = await this._profileResolver!.resolve(event, parsed);
-    const cleanText = cleanInboundText(parsed.text, event, this.config, botSelfId);
-
-    const sceneId =
-      parsed.sourceType === 'group'
-        ? `napcat:group:${parsed.sourceId}`
-        : `napcat:private:${parsed.senderId}`;
-
-    const isMainUser =
-      parsed.senderId !== botSelfId &&
-      parsed.senderId === String(this.config.main_user.qq ?? '');
-
-    const sessionPolicy =
-      parsed.sourceType === 'group'
-        ? this.config.routing.session_partition.group
-        : this.config.routing.session_partition.private;
-
-    // Cortex → Soul boundary: build standard PerceptionRequest
-    const perceptionReq = buildPerceptionRequest(
-      parsed,
-      sceneId,
-      nickname,
-      cleanText,
-      this.config,
-      isMainUser,
-      sessionPolicy,
-    );
-    if (!perceptionReq) return;
-
-    const modality: string[] = ['text'];
-    for (const item of parsed.mediaItems) {
-      if (item.modality && !modality.includes(item.modality)) modality.push(item.modality);
-    }
-
-    const eventId = crypto.randomUUID();
-    const formattedText =
-      (perceptionReq.input.items[0]?.['text'] as string | undefined) ?? cleanText;
-
-    const perceptionEvent: PerceptionEvent = {
-      id: eventId,
-      source: sceneId,
-      sensoryType: 'TEXT',
-      content: { text: formattedText, raw: perceptionReq, modality },
-      timestamp: event.time ? event.time * 1000 : Date.now(),
-    };
-
-    // record reply routing with TTL
-    this._replyTargets.set(eventId, {
-      target_type: parsed.sourceType,
-      target_id:
-        parsed.sourceType === 'group' ? parsed.sourceId : parsed.senderId,
-      sender_id: parsed.senderId,
-      expiresAt: Date.now() + REPLY_TARGET_TTL_MS,
+  /**
+   * 对 NapCat 发起 action 请求并等待 echo 响应。
+   * OB11 协议：{"action":"","params":{},"echo":"<id>"} → {"echo":"<id>","retcode":0,"data":{...}}
+   */
+  private _callAction(action: string, params: Record<string, unknown>): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const echo = `${action}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const timer = setTimeout(() => {
+        this._pendingCalls.delete(echo);
+        reject(new Error(`NapCat action timeout: ${action}`));
+      }, ACTION_TIMEOUT_MS);
+      this._pendingCalls.set(echo, { resolve, reject, timer });
+      const sent = this.sendRaw(JSON.stringify({ action, params, echo }));
+      if (!sent) {
+        clearTimeout(timer);
+        this._pendingCalls.delete(echo);
+        reject(new Error('NapCat WS not connected'));
+      }
     });
-
-    this.logger.debug(
-      `[napcat] perception injected id=${eventId} scene=${sceneId}`,
-    );
-
-    this.ctx.sceneAttention.reportSceneAttention(sceneId, true);
-    this._activeChannels.add(sceneId);
-
-    await this.ctx.perception.inject(perceptionEvent);
-  }
-
-  // ── Outbound pipeline ─────────────────────────────────────────
-
-  private _sendReply(payload: ChannelReplyPayload): void {
-    if (!this.config.reply.enabled) return;
-
-    const eventId = String(payload.traceId);
-    const routing = this._replyTargets.get(eventId);
-    if (!routing) {
-      this.logger.warn(`[napcat] reply route not found, traceId=${eventId}`);
-      return;
-    }
-    this._replyTargets.delete(eventId);
-
-    const replyText = cleanOutboundReply(payload.text);
-    if (!replyText) return;
-
-    const mentionSender =
-      this.config.reply.mention_sender_in_group && routing.target_type === 'group';
-
-    type OB11Segment = { type: string; data: Record<string, unknown> };
-    const message: OB11Segment[] = mentionSender
-      ? [
-          { type: 'at', data: { qq: routing.sender_id } },
-          { type: 'text', data: { text: ' ' + replyText } },
-        ]
-      : [{ type: 'text', data: { text: replyText } }];
-
-    const actionMsg =
-      routing.target_type === 'group'
-        ? { action: 'send_group_msg', params: { group_id: parseInt(routing.target_id, 10), message } }
-        : { action: 'send_private_msg', params: { user_id: parseInt(routing.target_id, 10), message } };
-
-    if (this.sendRaw(JSON.stringify(actionMsg))) {
-      this.logger.info(
-        `[napcat] reply sent -> ${routing.target_type}:${routing.target_id}`,
-      );
-    }
-  }
-
-  // ── Internal maintenance ──────────────────────────────────────
-
-  private _gcReplyTargets(): void {
-    const now = Date.now();
-    for (const [key, val] of this._replyTargets) {
-      if (val.expiresAt <= now) this._replyTargets.delete(key);
-    }
   }
 }

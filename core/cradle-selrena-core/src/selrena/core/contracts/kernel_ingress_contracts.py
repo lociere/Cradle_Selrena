@@ -19,12 +19,23 @@ class KernelMessageEnvelope(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class PerceptionModalityItemModel(BaseModel):
+    """单个多模态输入项。"""
+
+    modality: str
+    text: str | None = None
+    uri: str | None = None
+    mime_type: str | None = None
+    description_hint: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class PerceptionEventContentModel(BaseModel):
     """感知事件核心内容模型。"""
 
     text: str | None = None
-    raw: Any | None = None
     modality: list[str] = Field(default_factory=list)
+    items: list[PerceptionModalityItemModel] = Field(default_factory=list)
 
 
 class PerceptionEventPayloadModel(BaseModel):
@@ -34,6 +45,7 @@ class PerceptionEventPayloadModel(BaseModel):
     sensoryType: str
     source: str
     timestamp: float
+    familiarity: int = 0
     content: PerceptionEventContentModel
 
 
@@ -77,8 +89,6 @@ class KernelKnowledgeRecord(BaseModel):
     enabled: bool = True
     tags: list[str] = Field(default_factory=list)
     priority: int = 1
-    source: str = "manual"
-    updated_at: str = ""
 
 
 class KnowledgeRetrievalConfigModel(BaseModel):

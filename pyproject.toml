@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,66 +7,25 @@ name = "cradle-selrena"
 version = "0.1.0"
 description = "Cradle_Selrena: 摇篮：月见 — 多模态智能代理框架"
 readme = "README.md"
-requires-python = ">=3.12, <=3.12.99"
+requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
-keywords = ["AI","assistant","napcat","vector-store","chatbot"]
+keywords = ["AI", "assistant", "napcat", "chatbot"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-authors = [
-    { name = "Your Name", email = "your.email@example.com" }
-]
 
-# runtime dependencies; keep roughly grouped and alphabetized where sensible
-dependencies = [
-    "pydantic>=2.0",
-    "python-dotenv",
-    "pyyaml",
-    "loguru",
-    "PySide6",
-    "openai>=1.0",
-    "langchain",
-    "langgraph",
-    "numpy>=1.20,<2.4",  # Pin numpy to support numba & llama-cpp-python
-    "pillow",
-    "pyautogui",
-    "edge-tts",
-    "requests",
-    "websockets>=11.0.3",
-    "soundfile",         # Essential for librosa audio processing
-    "chromadb",          # Vector Store
-    "sentence-transformers", # Text Embedding
-    "llama-cpp-python>=0.3.16",
-    "structlog>=25.5.0",
-    "pyzmq>=27.1.0",
-]
+# 单仓根级元数据——Python 运行时依赖统一由 core/cradle-selrena-core 管理
+dependencies = []
 
+[tool.uv.sources]
+cradle-selrena-core = { path = "core/cradle-selrena-core", editable = true }
 
-
-# optional groups (extras) can be added as needed
-[project.optional-dependencies]
-# dev tools for contributors
-dev = [
-    "pytest",
-    "pytest-asyncio",
-    "black",
-    "isort",
-    "mypy",
-]
-
-[project.scripts]
-cradle = "cradle.main:main"
-
-[tool.setuptools.packages.find]
-where = ["core/cradle-selrena-core/src"]
-include = ["cradle*", "selrena*"]
-
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py310']
+target-version = "py312"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

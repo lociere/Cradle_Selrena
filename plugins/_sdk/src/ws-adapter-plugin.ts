@@ -79,6 +79,7 @@ export abstract class WsAdapterPlugin<TConfig = unknown> extends BasePlugin<TCon
         this._socket.close();
       }
       this._socket = socket;
+      this.logger.info(`WsAdapterPlugin: client connected from ${req.socket.remoteAddress ?? 'unknown'}`);
       this.onClientConnected(socket, req);
 
       socket.on('message', (raw: Buffer) => {

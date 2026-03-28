@@ -25,6 +25,7 @@ import { PythonAIManager } from "./core/application/capabilities/inference/pytho
 import { PluginManager } from "./core/host/plugin-manager";
 import { PluginHostAppService } from "./core/application/services/plugin-host-app.service";
 import { ActionStreamManager } from "./core/application/capabilities/action-stream/action-stream-manager";
+import { AIProxy } from "./core/application/capabilities/inference/ai-proxy";
 import { LifeClockManager } from "./core/domain/organism/life-clock/life-clock-manager";
 import { MemorySyncManager } from "./core/application/capabilities/memory/memory-sync-manager";
 import { AttentionSessionManager } from "./core/domain/attention/attention-session-manager";
@@ -33,6 +34,7 @@ import { SceneRoutingManager } from "./core/application/capabilities/scene/scene
 import { PluginSceneTranscriptService } from "./core/application/capabilities/scene/plugin-scene-transcript-service";
 import { AudioService } from "./core/application/capabilities/audio/audio-service";
 import { ChannelRuntimeManager } from "./core/application/channel/ChannelRuntimeManager";
+import { IngressGateManager } from "./core/foundation/ingress-gate/ingress-gate-manager";
 
 const logger = getLogger("app-root");
 
@@ -99,6 +101,12 @@ export class App {
         }, rootTraceContext)
       );
       logger.info("配置管理器启动完成", { startup_time_ms: moduleStartupTime });
+
+      // ======================================
+      // 步骤1.5：初始化入站防护
+      // ======================================
+      IngressGateManager.instance.init(globalConfig.kernel.ingress_gate);
+      logger.info("入站防护已初始化");
 
       // ======================================
       // 步骤2：初始化全局日志器
@@ -191,7 +199,7 @@ export class App {
       // ======================================
       // 步骤8：初始化注意力会话管理器
       // ======================================
-      AttentionSessionManager.instance.init();
+      AttentionSessionManager.instance.init(AIProxy.instance, ActionStreamManager.instance);
       await EventBus.instance.publish(
         new ModuleStartedEvent({
           moduleName: "attention-session",
@@ -204,7 +212,7 @@ export class App {
       // 步骤9：启动生命时钟
       // ======================================
       const clockStart = Date.now();
-      await LifeClockManager.instance.init();
+      await LifeClockManager.instance.init(AIProxy.instance);
       LifeClockManager.instance.start();
       const clockStartupTime = Date.now() - clockStart;
       await EventBus.instance.publish(
@@ -220,6 +228,9 @@ export class App {
       // ======================================
       this._startupTimeMs = Date.now() - appStartTime;
       this._state = AppLifecycleState.RUNNING;
+
+      // 所有模块就绪 → 开放入站防护
+      IngressGateManager.instance.setSystemReady(true);
 
       await EventBus.instance.publish(new AppStartedEvent({
         startupTimeMs: this._startupTimeMs,
@@ -265,6 +276,10 @@ export class App {
     });
 
     this._state = AppLifecycleState.STOPPING;
+
+    // 立即关闭入站防护，拒绝新输入
+    IngressGateManager.instance.setSystemReady(false);
+
     await EventBus.instance.publish(new AppStoppingEvent({
       reason: exitCode === 0 ? "正常停机" : "异常停机",
     }, stopTraceContext));
@@ -279,7 +294,7 @@ export class App {
       logger.info("生命时钟已停止");
 
       // 2. 停止注意力会话管理器
-      AttentionSessionManager.instance.stop();
+      await AttentionSessionManager.instance.stop();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "attention-session",
       }, stopTraceContext));
@@ -326,7 +341,11 @@ export class App {
       }, stopTraceContext));
       logger.info("数据库已关闭");
 
-      // 9. 关闭事件总线
+      // 9. 关闭入站防护
+      IngressGateManager.instance.stop();
+      logger.info("入站防护已停止");
+
+      // 10. 关闭事件总线
       await EventBus.instance.shutdown();
       await EventBus.instance.publish(new ModuleStoppedEvent({
         moduleName: "event-bus",

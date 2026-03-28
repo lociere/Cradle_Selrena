@@ -7,6 +7,7 @@
 2. 所有prompt构建、人设注入都在应用层完成，这里仅做纯生成
 3. 可插拔替换，更换模型仅需修改这里，核心代码零改动
 4. 兼容本地模型和云端LLM，自动适配
+5. 多 provider 路由：providers 字典按 key 选择不同推理后端
 """
 from dataclasses import dataclass
 import json
@@ -25,10 +26,16 @@ logger = get_logger("llm_engine")
 
 @dataclass(frozen=True)
 class LLMMessage:
-    """单条模型消息。"""
+    """单条模型消息。
+
+    content 为文字时直接传字符串。
+    若需要传图片，使用 vision_url 字段携带图片 URL（仅视觉模型路径使用）。
+    """
 
     role: str
     content: str
+    vision_url: str | None = None      # 非 None 时构造 vision 消息（url 图片）
+    vision_mime: str | None = None     # 图片 MIME 类型，默认 image/jpeg
 
 
 @dataclass(frozen=True)
@@ -38,25 +45,46 @@ class LLMRequest:
     messages: list[LLMMessage]
 
 
+def _build_message_payload(messages: list[LLMMessage]) -> list[dict]:
+    """将 LLMMessage 列表转为 OpenAI 兼容的消息载荷。
+
+    带 vision_url 的消息构造为 content 数组（image_url + text）格式，
+    符合 OpenAI Vision / Qwen-VL / DeepSeek-VL 的 chat/completions 兼容接口。
+    """
+    result: list[dict] = []
+    for msg in messages:
+        if not msg.content.strip() and not msg.vision_url:
+            continue
+        if msg.vision_url:
+            content_parts: list[dict] = [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": msg.vision_url,
+                        "detail": "auto",
+                    },
+                }
+            ]
+            if msg.content.strip():
+                content_parts.append({"type": "text", "text": msg.content})
+            result.append({"role": msg.role, "content": content_parts})
+        else:
+            result.append({"role": msg.role, "content": msg.content})
+    return result
+
+
 # ======================================
 # LLM推理引擎
 # ======================================
 class LLMEngine:
     """
-    LLM推理引擎，纯算力调用
-    核心作用：接收完整的prompt，返回生成的文本，不做任何业务处理
+    LLM推理引擎，纯算力调用。
+    支持多 provider 路由：通过 provider_key 选择 LLMConfig.providers 中的配置。
     """
     def __init__(self, self_entity: SelrenaSelfEntity, llm_config: Optional[LLMConfig] = None):
-        """初始化LLM引擎
-
-        参数：
-            self_entity: 月见自我实体实例
-            llm_config: 可选的云端/API LLM配置，由内核注入
-        """
         self.self_entity = self_entity
         self.config = self_entity.inference_config.model
         self.llm_config = llm_config
-        # 本地模型实例，初始化时懒加载
         self._model = None
         logger.info("LLM引擎初始化完成", model_path=self.config.local_model_path, llm_config=self.llm_config)
 
@@ -65,16 +93,6 @@ class LLMEngine:
         if self._model is not None:
             return
         try:
-            # ======================
-            # 这里替换成你的本地模型加载代码
-            # 示例：llama.cpp / ollama / openai-api
-            # ======================
-            # from llama_cpp import Llama
-            # self._model = Llama(
-            #     model_path=self.config.local_model_path,
-            #     n_ctx=2048,
-            #     n_threads=8
-            # )
             logger.info("本地模型加载完成", model_path=self.config.local_model_path)
         except Exception as e:
             raise InferenceException(f"本地模型加载失败: {str(e)}")
@@ -94,56 +112,114 @@ class LLMEngine:
                 return message.content.strip()
         return ""
 
-    def _generate_via_api(self, llm_request: LLMRequest) -> str:
-        """通过云端/API LLM生成回复"""
-        if not self.llm_config:
-            raise InferenceException("缺少 LLM 配置，无法调用云端服务")
+    def _resolve_provider_config(self, provider_key: str | None) -> LLMConfig | None:
+        """将 provider_key 解析为内部可用的 LLMConfig（model 字段已填充）。
 
-        api_type = self.llm_config.api_type.lower().strip()
-        api_key = self.llm_config.api_key
+        支持三种格式：
+          - ``None``           → 使用根配置 models 第一个模型
+          - ``"qwen"``         → providers["qwen"].models 第一个模型
+          - ``"qwen/vision"``  → providers["qwen"].models["vision"]
+
+        查找失败时降级到根配置并打印警告，保证不崩溃。
+        """
+        if not self.llm_config:
+            return None
+
+        def _build(base: LLMConfig, resolved_model: str | None, prov: object = None) -> LLMConfig:
+            p = prov
+            return LLMConfig(
+                api_type=getattr(p, "api_type", None) or base.api_type,
+                api_key=getattr(p, "api_key", None) or base.api_key,
+                base_url=getattr(p, "base_url", None) or base.base_url,
+                model=resolved_model,
+                temperature=(
+                    getattr(p, "temperature", None)
+                    if getattr(p, "temperature", None) is not None
+                    else base.temperature
+                ),
+                request_method=getattr(p, "request_method", None),
+                request_path=getattr(p, "request_path", None),
+                request_headers=getattr(p, "request_headers", None),
+                request_body_template=getattr(p, "request_body_template", None),
+                response_extract=getattr(p, "response_extract", None),
+            )
+
+        # ── provider_key 为 None：解析根配置的默认模型 ─────────
+        if not provider_key:
+            root_models = self.llm_config.models or {}
+            resolved = next(iter(root_models.values()), None)
+            if not resolved:
+                logger.warning("根配置 models 为空，无法解析默认模型")
+            return _build(self.llm_config, resolved)
+
+        # ── 解析复合格式 "provider/model_alias" ─────────────────
+        if "/" in provider_key:
+            prov_name, model_alias = provider_key.split("/", 1)
+        else:
+            prov_name, model_alias = provider_key, None
+
+        providers = self.llm_config.providers or {}
+        prov = providers.get(prov_name)
+        if not prov:
+            logger.warning("未知 provider，降级使用根配置", provider_key=provider_key)
+            root_models = self.llm_config.models or {}
+            return _build(self.llm_config, next(iter(root_models.values()), None))
+
+        # ── 解析最终模型 ID ──────────────────────────────────────
+        prov_models = prov.models
+        if model_alias:
+            resolved_model = prov_models.get(model_alias)
+            if not resolved_model:
+                resolved_model = next(iter(prov_models.values()), None)
+                logger.warning(
+                    "Provider 模型别名未找到，降级到第一个模型",
+                    provider=prov_name, alias=model_alias, fallback=resolved_model,
+                )
+        else:
+            resolved_model = next(iter(prov_models.values()), None)
+
+        return _build(self.llm_config, resolved_model, prov)
+
+    def _generate_via_api(self, llm_request: LLMRequest, cfg: LLMConfig) -> str:
+        """通过指定的 LLMConfig（可为 provider 子配置）调用 API 生成回复。"""
+        api_type = cfg.api_type.lower().strip()
+        api_key = cfg.api_key
         if not api_key:
             raise InferenceException("缺少 LLM API Key，请在配置中提供")
 
-        base_url = (self.llm_config.base_url or "https://api.deepseek.com").rstrip("/")
-        request_method = (self.llm_config.request_method or "POST").upper()
-        if self.llm_config.request_path:
-            request_path = self.llm_config.request_path
+        base_url = (cfg.base_url or "https://api.deepseek.com").rstrip("/")
+        request_method = (cfg.request_method or "POST").upper()
+        if cfg.request_path:
+            request_path = cfg.request_path
         elif api_type in {"deepseek", "openai"}:
             request_path = "/v1/chat/completions"
         else:
             request_path = "/v1/completions"
         endpoint = urljoin(base_url + "/", request_path.lstrip("/"))
 
-        model_name = self.llm_config.model or (
+        model_name = cfg.model or (
             "deepseek-chat" if api_type == "deepseek" else self.config.local_model_path
         )
         prompt_text = self._render_messages_as_prompt(llm_request)
-        message_payload = [
-            {"role": message.role, "content": message.content}
-            for message in llm_request.messages
-            if message.content.strip()
-        ]
+        message_payload = _build_message_payload(llm_request.messages)
 
-        # 默认请求体（OpenAI/DeepSeek 兼容）
         if request_path.endswith("/chat/completions"):
-            default_payload = {
+            default_payload: dict = {
                 "model": model_name,
                 "messages": message_payload,
                 "max_tokens": self.config.max_tokens,
-                "temperature": self.llm_config.temperature if self.llm_config.temperature is not None else self.config.temperature,
+                "temperature": cfg.temperature if cfg.temperature is not None else self.config.temperature,
             }
         else:
             default_payload = {
                 "model": model_name,
                 "prompt": prompt_text,
                 "max_tokens": self.config.max_tokens,
-                "temperature": self.llm_config.temperature if self.llm_config.temperature is not None else self.config.temperature,
+                "temperature": cfg.temperature if cfg.temperature is not None else self.config.temperature,
             }
 
-        # 支持自定义请求体模板。
-        # 可用占位符：{prompt} {prompt_json} {messages} {messages_json} {model} {temperature}
-        if self.llm_config.request_body_template:
-            template = self.llm_config.request_body_template
+        if cfg.request_body_template:
+            template = cfg.request_body_template
             try:
                 body_text = template.format(
                     prompt=prompt_text,
@@ -163,9 +239,8 @@ class LLMEngine:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
         }
-        # 允许在配置中覆盖或补充额外 Header
-        if self.llm_config.request_headers:
-            headers.update(self.llm_config.request_headers)
+        if cfg.request_headers:
+            headers.update(cfg.request_headers)
 
         try:
             req = request.Request(
@@ -177,13 +252,9 @@ class LLMEngine:
             with request.urlopen(req, timeout=60) as resp:
                 resp_data = json.load(resp)
 
-            # 兼容不同API返回格式
             if isinstance(resp_data, dict):
-                # 1) 可配置响应提取路径（点分隔字段）
-                if self.llm_config.response_extract:
-                    return self._extract_response_field(resp_data, self.llm_config.response_extract)
-
-                # 2) 默认常见结构兼容
+                if cfg.response_extract:
+                    return self._extract_response_field(resp_data, cfg.response_extract)
                 if "choices" in resp_data and isinstance(resp_data["choices"], list) and resp_data["choices"]:
                     first = resp_data["choices"][0]
                     if isinstance(first, dict):
@@ -207,12 +278,11 @@ class LLMEngine:
     def _extract_response_field(self, data: dict, path: str) -> str:
         """按照点分隔路径提取响应字段，路径示例：choices.0.text"""
         parts = [p for p in path.split(".") if p != ""]
-        current = data
+        current: object = data
         for part in parts:
             if isinstance(current, list):
                 try:
-                    idx = int(part)
-                    current = current[idx]
+                    current = current[int(part)]
                 except Exception:
                     raise InferenceException(f"响应路径解析失败: {path}")
             elif isinstance(current, dict):
@@ -225,48 +295,36 @@ class LLMEngine:
             return current.strip()
         return str(current)
 
-    def generate(self, llm_request: LLMRequest) -> str:
-        """
-        生成回复，纯算力调用
-        参数：
-            llm_request: 应用层构建好的消息式会话请求
-        返回：LLM生成的纯文本
-        异常：
-            InferenceException: 生成失败时抛出
+    def generate(self, llm_request: LLMRequest, provider_key: str | None = None) -> str:
+        """生成回复。
+
+        Args:
+            llm_request: 应用层构建好的消息式会话请求（可包含 vision_url 图片）。
+            provider_key: 可选 provider 标识（对应 llm.providers 字典 key），
+                          不传则使用根配置（llm 节点）。
+        Returns:
+            LLM 生成的纯文本。
+        Raises:
+            InferenceException: 生成失败时抛出。
         """
         try:
-            # 云端/API优先（如果配置了llm.api_type且不是 local）
-            if self.llm_config and self.llm_config.api_type and self.llm_config.api_type.lower() != "local":
+            cfg = self._resolve_provider_config(provider_key)
+            if cfg and cfg.api_type and cfg.api_type.lower() != "local":
                 try:
-                    reply = self._generate_via_api(llm_request)
-                    logger.debug("LLM API 生成完成", reply_length=len(reply))
+                    reply = self._generate_via_api(llm_request, cfg)
+                    logger.debug("LLM API 生成完成", provider=provider_key or "default", reply_length=len(reply))
                     return reply
                 except InferenceException as api_error:
-                    # API 异常时自动降级到本地生成，保证交互不中断
-                    logger.warning("LLM API 调用失败，自动降级本地生成", error=str(api_error))
+                    logger.warning("LLM API 调用失败，自动降级本地生成", provider=provider_key, error=str(api_error))
 
             # 本地模型调用（默认或API降级）
             self._load_local_model()
 
-            # ======================
-            # 这里替换成你的模型调用代码
-            # ======================
-            # 示例：本地llama.cpp调用
-            # output = self._model.create_completion(
-            #     prompt=full_prompt,
-            #     max_tokens=self.config.max_tokens,
-            #     temperature=self.config.temperature,
-            #     top_p=self.config.top_p,
-            #     frequency_penalty=self.config.frequency_penalty,
-            #     stop=["<|endoftext|>"]
-            # )
-            # reply = output["choices"][0]["text"].strip()
-
-            # 临时示例，生产环境替换成真实模型调用
+            # 本地模型调用占位（生产环境替换为 llama_cpp / ctransformers 等）
             latest_user_text = self._extract_latest_user_text(llm_request) or "又来找我了？"
             reply = f"哼，{latest_user_text.splitlines()[0]}...笨蛋，我才没有在意呢。"
 
-            logger.debug("LLM生成完成", reply_length=len(reply))
+            logger.debug("LLM本地生成完成", reply_length=len(reply))
             return reply.strip()
 
         except Exception as e:

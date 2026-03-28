@@ -30,7 +30,7 @@ class KernelIngressCortex:
         return ChatInput(
             model_input=payload.content.model_dump(),
             scene_id=payload.source,
-            familiarity=0,
+            familiarity=payload.familiarity,
             trace_id=envelope.trace_id,
         )
 

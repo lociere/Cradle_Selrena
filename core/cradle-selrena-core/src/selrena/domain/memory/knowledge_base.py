@@ -52,8 +52,6 @@ class KnowledgeEntry:
     kb_type: KnowledgeBaseType
     tags: List[str] = field(default_factory=list)
     priority: int = 1
-    source: str = "manual"
-    updated_at: str = ""
     enabled: bool = True
 
 
@@ -103,8 +101,6 @@ class KnowledgeBase:
                     kb_type=KnowledgeBaseType(record.scope),
                     tags=record.tags,
                     priority=record.priority,
-                    source=record.source,
-                    updated_at=record.updated_at,
                     enabled=record.enabled,
                 )
             )

@@ -7,22 +7,9 @@ export interface ActionStreamBasePayload {
   channel: "live2d";
 }
 
-export interface ActionFramePayload {
-  action_type: "expression" | "motion" | "gaze" | "mouth" | "posture";
-  value: string;
-  intensity: number;
-  duration_ms: number;
-}
-
 export interface ActionStreamStartPayload extends ActionStreamBasePayload {
   source_type: string;
   stage: "thinking" | "speaking";
-}
-
-export interface ActionStreamChunkPayload extends ActionStreamBasePayload {
-  sequence: number;
-  stage: "thinking" | "speaking" | "ending";
-  frame: ActionFramePayload;
 }
 
 export interface ActionStreamCompletePayload extends ActionStreamBasePayload {
@@ -40,18 +27,6 @@ export class ActionStreamStartedEvent extends DomainEvent {
   public readonly trace_context: TraceContext;
 
   constructor(payload: ActionStreamStartPayload, trace_context?: TraceContext, occurredAt?: number) {
-    super(occurredAt);
-    this.payload = payload;
-    this.trace_context = trace_context ?? { trace_id: payload.stream_id };
-  }
-}
-
-export class ActionStreamChunkEvent extends DomainEvent {
-  public readonly event_type = "ActionStreamChunkEvent";
-  public readonly payload: ActionStreamChunkPayload;
-  public readonly trace_context: TraceContext;
-
-  constructor(payload: ActionStreamChunkPayload, trace_context?: TraceContext, occurredAt?: number) {
     super(occurredAt);
     this.payload = payload;
     this.trace_context = trace_context ?? { trace_id: payload.stream_id };

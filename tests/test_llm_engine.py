@@ -77,10 +77,6 @@ def make_minimal_config(llm_api_type: str = "local", **llm_kwargs: str) -> Globa
             "action_stream": {
                 "enabled": True,
                 "channel": "live2d",
-                "chunk_interval_ms": 80,
-                "max_chunks_per_stream": 120,
-                "emit_thinking_chunks": True,
-                "emit_emotion_on_complete": True,
             },
         },
         llm=llm_conf,

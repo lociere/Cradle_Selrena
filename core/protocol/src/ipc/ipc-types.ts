@@ -123,16 +123,25 @@ export interface ModelInputPayload {
 
 /**
  * 通用感知消息：第三方平台接入统一走该类型。
+ * content 中不携带任何 Vessel 私有字段，Soul 层只能读到语义结果。
  */
 export interface PerceptionMessageRequest {
   id: string;
   sensoryType: string;
+  /** 来源标识，等同于 scene_id */
   source: string;
   timestamp: number;
+  /** 熟悉度 0-10，由 Vessel Cortex 计算后注入，Soul 层直接使用 */
+  familiarity: number;
   content: {
+    /**
+     * 注入 LLM 的完整上下文文本（含对话背景前缀）。
+     * 内核层不应对此字段做任何平台特定的字符串解析。
+     */
     text?: string;
-    raw?: any;
     modality: string[];
+    /** 结构化多模态项（文本 + 图片 URI + 视频 URI 等） */
+    items?: PerceptionModalityItem[];
   };
 }
 
@@ -162,8 +171,6 @@ export interface IPCKnowledgeRecord {
   priority: number;
   tags: string[];
   enabled: boolean;
-  source: string;
-  updated_at: string;
 }
 
 export interface IPCKnowledgeRetrievalConfig {
