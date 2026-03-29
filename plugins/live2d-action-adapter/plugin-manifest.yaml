@@ -1,0 +1,10 @@
+id: live2d-action-adapter
+name: Live2D Action Stream Adapter
+version: 0.1.0
+author: Selrena Team
+description: Subscribe action stream events and persist live2d action chunks for renderer consumption
+category: adapter
+main: dist/index.js
+minAppVersion: 0.1.0
+permissions:
+  - EVENT_SUBSCRIBE

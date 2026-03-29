@@ -1,0 +1,21 @@
+id: napcat-adapter
+name: Napcat Adapter
+version: 0.2.0
+author: GitHub Copilot
+description: Napcat OneBot 11 reverse WebSocket adapter for Selrena
+main: dist/index.js
+minAppVersion: 0.1.0
+tags:
+  - adapter
+  - websocket
+  - qq
+  - onebot11
+  - multimodal
+permissions:
+  - PERCEPTION_WRITE
+  - EVENT_SUBSCRIBE
+  - CONFIG_READ_SELF
+  - CHAT_SEND
+  - NATIVE_AUDIO_ASR
+  - NATIVE_AUDIO_TTS
+  - MEMORY_SHORT_TERM

@@ -1,0 +1,27 @@
+{
+  "name": "cradle-selrena",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "ws": "^8.18.3",
+    "yaml": "^2.8.1",
+    "zod": "^3.23.0"
+  },
+  "scripts": {
+    "bootstrap": "pnpm install",
+    "build": "pnpm -w run build:all",
+    "build:all": "pnpm -w --filter ./core/... run build --if-present",
+    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk build && pnpm --filter @cradle-selrena/plugin-napcat-adapter build && pnpm --filter @cradle-selrena/plugin-live2d-action-adapter build",
+    "dev": "pnpm -w run dev:all",
+    "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
+    "test": "pnpm -w run test:all",
+    "test:all": "pnpm --filter @cradle-selrena/kernel test --if-present",
+    "chat": "pnpm --filter @cradle-selrena/kernel start"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.14",
+    "concurrently": "^8.0.0",
+    "pnpm": "^9.15.9"
+  }
+}

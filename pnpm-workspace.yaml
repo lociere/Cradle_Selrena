@@ -1,0 +1,20 @@
+packages:
+  - 'core/**'
+  - 'packages/**'
+  - 'packages/*/**'
+  - 'packages/@cradle-selrena/**'
+  - 'assets/**'
+  - 'scripts/**'
+  - 'plugins/_sdk'
+  - 'plugins/napcat-adapter'
+  - 'plugins/_template'
+  - 'plugins/live2d-action-adapter'
+allowBuilds:
+  '@bufbuild/buf': true
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  zeromq: true
+
+shared-workspace-settings:
+  install: true

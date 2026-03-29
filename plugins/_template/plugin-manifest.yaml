@@ -1,0 +1,57 @@
+# ════════════════════════════════════════════════════════════════
+# 插件清单 — plugin-manifest.yaml
+#
+# 【必须存在】每个插件根目录下必须包含此文件。
+# PluginManager 在加载时优先解析此清单；字段验证失败则拒绝加载。
+#
+# 命名规范：id 必须与插件目录名完全一致，仅允许 [a-z0-9-]。
+# ════════════════════════════════════════════════════════════════
+
+# ── 基础信息（必填）────────────────────────────────────────────
+id: my-plugin               # 唯一标识，必须与目录名完全一致
+name: My Plugin             # 人类可读的显示名称
+version: 0.1.0              # 语义化版本 x.y.z
+author: Your Name
+description: 一句话描述插件的功能
+
+# ── 入口（必填，固定值）────────────────────────────────────────
+main: dist/index.js         # 编译产物入口，不要修改
+minAppVersion: 0.1.0        # 最低兼容的 App 版本
+
+# ── 标签（自由标注，描述插件角色）─────────────────────────────
+#
+# 标签不影响内核功能，仅用于分类/展示/搜索。
+# 可叠加任意组合，也可自创新标签。
+#
+# 常见参考标签：
+#   adapter      平台接入适配器（如 QQ、Discord、Minecraft）
+#   tool         工具调用 / MCP 工具提供者
+#   sense        主动感知推送（如天气、提醒、定时事件）
+#   action       主动出站操作（如发消息、控制设备、调用 API）
+#   websocket    使用 WebSocket 通信
+#   http         使用 HTTP 通信
+#   schedule     包含定时任务
+#   memory       涉及记忆读写
+#   audio        涉及语音处理（ASR / TTS）
+#   multimodal   涉及图片 / 视频等多模态
+#   ui           渲染层交互（Live2D / 窗口等）
+tags:
+  - tool
+
+# ── 权限声明（最小权限原则）───────────────────────────────────
+#
+# 只声明真正需要的权限，PluginManager 会在运行时强制校验。
+#
+# 可用权限：
+#   PERCEPTION_WRITE    向 Soul 注入感知事件（inject）
+#   EVENT_SUBSCRIBE     订阅全局事件总线
+#   EVENT_PUBLISH       发布自定义事件（仅 plugin.<id>.* 命名空间）
+#   CONFIG_READ_SELF    读取自身配置文件（configs/plugin/<id>.yaml）
+#   CHAT_SEND           发送聊天消息
+#   NATIVE_AUDIO_ASR    调用系统 ASR 语音识别
+#   NATIVE_AUDIO_TTS    调用系统 TTS 语音合成
+#   AGENT_REGISTER      注册子代理（Sub-Agent / MCP 工具）
+#   MEMORY_READ         读取插件短期记忆
+#   MEMORY_WRITE        写入插件短期记忆
+permissions:
+  - CONFIG_READ_SELF

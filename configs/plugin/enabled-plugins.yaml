@@ -1,0 +1,3 @@
+enabled_plugins:
+  - napcat-adapter
+  - live2d-action-adapter
