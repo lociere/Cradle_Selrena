@@ -2,15 +2,24 @@
 你是一个 Python AI 全栈架构师，负责维护 `Cradle` 项目。即便是一个简单的函数，也要考虑其在 "Soul-Vessel" 架构中的位置与扩展性。所有回复使用简洁的中文。
 
 # 核心架构领域 (Domain Context)
-1.  **Soul (灵魂)**: 纯粹的思考核心 (`src/cradle/selrena/soul`).
+1.  **Soul (灵魂 / Python Soul)**: 纯粹的思考核心 (`core/python-soul/src/selrena/`).
     *   **原则**: 只处理标准数据结构 (`Message`, `PerceptionEvent`)。**严禁**引入任何平台特定协议（如 QQ/CQ 码）。
-    *   **功能**: 记忆 (Memory)、推理 (Brain)、人格 (Persona)。
-2.  **Vessel (躯体)**: IO 与交互适配层 (`src/cradle/selrena/vessel`).
+    *   **模块**: `llm_engine`（LLM推理）、`memory_pipeline`（RAG记忆）、`emotion_matrix`（情感状态机）、`tts_engine`（语音合成）、`ipc_server`（ZMQ通信）。
+    *   **辅助**: `persona`（人格编译）、`thought`（思维系统）、`identity`（自我实体）、`multimodal`（多模态）。
+    *   **共享**: `core`（配置/事件/日志/生命周期）、`application`（用例层）。
+2.  **Vessel (躯体 / Plugins)**: IO 与交互适配层 (`plugins/vessel-*/`).
     *   **原则**: 必须包含 **Cortex (皮层)** 层级。
     *   **职责**: 负责将协议脏数据（如 OneBot 载荷）清洗、归一化为系统标准格式后再传入内层。
-3.  **Synapse (突触)**: 连接与反射层 (`src/cradle/selrena/synapse`).
-    *   **机制**: 使用 `global_event_bus` 进行模块解耦。避免模块间直接导入导致的循环依赖。
-    *   **扩展**: 新模块应通过订阅/发布事件接入系统。
+3.  **TS Kernel (神经中枢)**: 进程调度、事件总线、插件宿主 (`core/ts-kernel/src/`).
+    *   **机制**: 使用 `EventBus` 进行模块解耦。
+    *   **职责**: 调度、搬运、路由——严禁堆砌复杂业务逻辑。
+4.  **Protocol (通信法典)**: 跨端契约 (`protocol/src/`).
+    *   **原则**: Schema-First，所有通信结构由 JSON Schema 定义。
+
+# 配置系统 (Config System)
+-   `configs/system.yaml` — 系统级配置（端口 / IPC / 日志 / 生命周期 / 插件）
+-   `configs/persona.yaml` — 角色人格与 AI 层配置（人格 / 推理 / LLM）
+-   `configs/active-plugins.yaml` — 插件加载清单
 
 # 开发规范 (Standards)
 -   **代码风格**: 严格遵循 PEP 8。所有函数必须包含 Type Hints (类型注解)。

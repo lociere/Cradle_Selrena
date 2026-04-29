@@ -10,18 +10,22 @@
   },
   "scripts": {
     "bootstrap": "pnpm install",
-    "build": "pnpm -w run build:all",
-    "build:all": "pnpm -w --filter ./core/... run build --if-present",
-    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk build && pnpm --filter @cradle-selrena/plugin-napcat-adapter build && pnpm --filter @cradle-selrena/plugin-live2d-action-adapter build",
+    "build": "pnpm run build:all",
+    "build:all": "pnpm --filter @cradle-selrena/protocol run lint && pnpm run build:plugins && pnpm --filter @cradle-selrena/kernel run build && pnpm --filter @cradle-selrena/renderer-ui run build && pnpm --filter @cradle-selrena/renderer-avatar run build",
+    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk run build && pnpm --filter @cradle-selrena/plugin-vessel-napcat run build && pnpm --filter @cradle-selrena/plugin-vessel-vtube-studio run build && pnpm --filter @cradle-selrena/plugin-template run build",
     "dev": "pnpm -w run dev:all",
-    "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer dev\"",
+    "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer-ui dev\" \"pnpm --filter @cradle-selrena/renderer-avatar start\"",
+    "dev:shells": "concurrently \"pnpm --filter @cradle-selrena/renderer-ui dev\" \"pnpm --filter @cradle-selrena/renderer-avatar start\"",
+    "avatar": "pnpm --filter @cradle-selrena/renderer-avatar start",
     "test": "pnpm -w run test:all",
     "test:all": "pnpm --filter @cradle-selrena/kernel test --if-present",
     "chat": "pnpm --filter @cradle-selrena/kernel start"
   },
   "devDependencies": {
+    "@types/node": "^20.19.37",
     "@types/ws": "^8.5.14",
     "concurrently": "^8.0.0",
-    "pnpm": "^9.15.9"
+    "pnpm": "^9.15.9",
+    "typescript": "^6.0.2"
   }
 }

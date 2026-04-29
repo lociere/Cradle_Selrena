@@ -1,0 +1,24 @@
+id: vessel-vtube-studio
+name: Vessel VTube Studio
+version: 0.1.0
+author: GitHub Copilot
+description: Vessel plugin placeholder for VTube Studio integration
+main: dist/index.js
+minAppVersion: 0.1.0
+tags:
+  - vessel
+  - vtube-studio
+  - avatar
+permissions:
+  - CONFIG_READ_SELF
+  - EVENT_SUBSCRIBEid: vessel-vtube-studio
+name: Vessel VTube Studio Adapter
+version: 0.1.0
+author: Selrena Team
+description: 提线木偶渲染适配器（原型期）— 通过 WebSocket 连接 VTube Studio API，将内核视觉指令转化为 VTS 表情/动作/参数控制
+category: adapter
+main: dist/index.js
+minAppVersion: 0.1.0
+permissions:
+  - EVENT_SUBSCRIBE
+  - NETWORK_CLIENT

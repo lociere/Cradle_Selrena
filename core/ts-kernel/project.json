@@ -1,0 +1,39 @@
+{
+  "name": "ts-kernel",
+  "root": "core/ts-kernel",
+  "sourceRoot": "core/ts-kernel/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/kernel run build"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/kernel run dev"
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/kernel run dev"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/kernel run test"
+      }
+    },
+    "chat": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/kernel run start",
+        "forwardAllArgs": false
+      }
+    }
+  }
+}

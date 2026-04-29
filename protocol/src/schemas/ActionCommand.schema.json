@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cradle-selrena.local/schemas/ActionCommand.schema.json",
+  "title": "ActionCommand",
+  "description": "跨层行为指令契约——唯一真相源。AI 层发出的行为指令，由 TS 内核路由到目标通道。禁止平台私有字段。",
+  "type": "object",
+  "required": ["trace_id", "action_type", "target", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "trace_id": {
+      "type": "string",
+      "description": "全链路追踪 ID（与对应的 PerceptionEvent.trace_id 关联）"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": ["reply", "recall", "react", "noop"],
+      "description": "行为类型：reply=回复消息；recall=撤回消息；react=表情反应；noop=沉默"
+    },
+    "target": {
+      "$ref": "#/definitions/ActionTarget"
+    },
+    "payload": {
+      "$ref": "#/definitions/ActionPayload"
+    },
+    "emotion_state": {
+      "$ref": "#/definitions/EmotionSnapshot"
+    }
+  },
+  "definitions": {
+    "ActionTarget": {
+      "type": "object",
+      "required": ["scene_id"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "description": "目标场景 ID（由 IdentityRouter 归一化后的 vessel_id 格式）"
+        },
+        "channel_hint": {
+          "type": ["string", "null"],
+          "description": "通道提示（可选，内核路由用）"
+        }
+      }
+    },
+    "ActionPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": ["string", "null"],
+          "description": "回复文本内容（action_type=reply 时必填）"
+        },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ActionMediaItem" },
+          "description": "附加多媒体项（图片/语音/表情等）"
+        }
+      }
+    },
+    "ActionMediaItem": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["image", "audio", "sticker"]
+        },
+        "uri": { "type": ["string", "null"] },
+        "mime_type": { "type": ["string", "null"] }
+      }
+    },
+    "EmotionSnapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "emotion_type": { "type": "string" },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "trigger": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

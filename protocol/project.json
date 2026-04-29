@@ -1,0 +1,20 @@
+{
+  "name": "protocol",
+  "root": "protocol",
+  "sourceRoot": "protocol/src",
+  "projectType": "library",
+  "targets": {
+    "gen": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/protocol run gen"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/protocol run lint"
+      }
+    }
+  }
+}

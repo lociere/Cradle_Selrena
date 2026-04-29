@@ -108,6 +108,22 @@ export class MyPlugin extends BasePlugin<MyPluginConfig> {
     //   timestamp: Date.now(),
     // });
 
+    // ── 范式 E：注册 Extension Command（VS Code 风格）─────────
+    //
+    // 需要权限：COMMAND_REGISTER
+    // 命令 ID 必须带插件前缀，避免全局污染。
+    this.registerCommand(
+      'my-plugin.ping',
+      async () => {
+        this.logger.info('[my-plugin] ping command executed');
+        return 'pong';
+      },
+      {
+        title: 'Ping My Plugin',
+        category: 'My Plugin',
+      },
+    );
+
     this.logger.info('[my-plugin] 插件启动完成');
   }
 

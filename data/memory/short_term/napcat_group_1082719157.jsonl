@@ -1,4 +1,6 @@
-{"memory_id":"6bc561f8-f0e9-4758-863e-8bf265bf3bd7","scene_id":"napcat:group:1082719157","role":"user","content":"[群成员:之佚] [消息类型:普通消息] ，晚安","importance":0.5,"timestamp":"2026-03-29T02:06:14.580183"}
-{"memory_id":"74ed668b-2259-49aa-acdc-7b5d0772a967","scene_id":"napcat:group:1082719157","role":"selrena","content":"晚安，之佚","importance":0.6,"timestamp":"2026-03-29T02:06:20.789600"}
-{"memory_id":"0569b417-7b28-4faa-8faa-fd29712bbb88","scene_id":"napcat:group:1082719157","role":"user","content":"[群聊背景上下文(最近1条)]\n  之佚: ，晚安\n[群成员:之佚] [消息类型:表情包] [表情包]","importance":0.5,"timestamp":"2026-03-29T02:06:27.091656"}
-{"memory_id":"c71a43bd-5655-4755-88c2-33eb43f4a77c","scene_id":"napcat:group:1082719157","role":"selrena","content":"看来你今晚心情不错呢","importance":0.6,"timestamp":"2026-03-29T02:06:33.000545"}
+{"memory_id":"e9802371-8455-4a7b-89c0-f153bbdda39e","scene_id":"napcat:group:1082719157","role":"user","content":"[群成员:茧色] [消息类型:普通消息] 中午好","importance":0.5,"timestamp":"2026-03-29T13:49:17.999795"}
+{"memory_id":"4431fc96-eea6-4652-9b46-5c4106c1fa18","scene_id":"napcat:group:1082719157","role":"selrena","content":"中午好，茧色","importance":0.6,"timestamp":"2026-03-29T13:49:24.746220"}
+{"memory_id":"83dce529-f2cf-419c-b1ba-af913421fda4","scene_id":"napcat:group:1082719157","role":"user","content":"[群聊背景上下文(最近2条)]\n  茧色: 中午好\n  月见: 中午好，茧色\n[群成员:茧色] [消息类型:表情包] [动画表情]","importance":0.5,"timestamp":"2026-03-29T13:49:36.679664"}
+{"memory_id":"fe7073a2-cd15-4517-a723-a467b83100b1","scene_id":"napcat:group:1082719157","role":"selrena","content":"这个表情挺可爱的","importance":0.6,"timestamp":"2026-03-29T13:49:43.216813"}
+{"memory_id":"28de473d-4ec8-41e6-9194-6c88dfe910ab","scene_id":"napcat:group:1082719157","role":"user","content":"[群聊背景上下文(最近4条)]\n  茧色: 中午好\n  月见: 中午好，茧色\n  茧色: [动画表情]\n  月见: 这个表情挺可爱的\n[群成员:茧色] [消息类型:普通消息] 挺好的","importance":0.5,"timestamp":"2026-03-29T13:49:55.881718"}
+{"memory_id":"296e78fe-a527-4f54-b98f-360aeeacb65b","scene_id":"napcat:group:1082719157","role":"selrena","content":"嗯，今天天气也不错","importance":0.6,"timestamp":"2026-03-29T13:50:02.291579"}

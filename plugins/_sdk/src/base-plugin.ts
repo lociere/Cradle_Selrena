@@ -23,6 +23,8 @@
 
 import type {
   ExtensionContext,
+  ExtensionCommandContribution,
+  ExtensionCommandMetadata,
   IDisposable,
   IPluginLogger,
   PluginEventPayloadMap,
@@ -125,6 +127,30 @@ export abstract class BasePlugin<TConfig = unknown> implements SystemPlugin<TCon
       });
     }, delayMs);
     return this.addDisposable({ dispose: () => clearTimeout(id) });
+  }
+
+  /**
+   * Register a command in VS Code-style shape.
+   * Command IDs must be namespaced by pluginId, e.g. `vessel-napcat.refresh`.
+   */
+  protected registerCommand(
+    commandId: string,
+    handler: (...args: unknown[]) => Promise<unknown> | unknown,
+    metadata?: ExtensionCommandMetadata,
+  ): IDisposable {
+    const disposable = this.ctx.commands.registerCommand(commandId, handler, metadata);
+    this.ctx.subscriptions.push(disposable);
+    return disposable;
+  }
+
+  /** Execute another registered extension command. */
+  protected async executeCommand(commandId: string, ...args: unknown[]): Promise<unknown> {
+    return this.ctx.commands.executeCommand(commandId, ...args);
+  }
+
+  /** List all registered extension commands and their display metadata. */
+  protected async listCommands(): Promise<ExtensionCommandContribution[]> {
+    return this.ctx.commands.listCommands();
   }
 
   // ── SystemPlugin contract (called by PluginManager) ──────────────

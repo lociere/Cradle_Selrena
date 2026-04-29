@@ -1,0 +1,28 @@
+# vessel-vtube-studio 插件配置
+# VTube Studio API 连接配置
+
+connection:
+  host: "127.0.0.1"
+  port: 8001
+  reconnect_interval_ms: 5000
+  max_reconnect_attempts: 0
+
+auth:
+  plugin_name: "Cradle Selrena"
+  plugin_developer: "Selrena Team"
+  # auth_token: ""  # VTS 首次授权后填入
+
+# 情绪 → VTS 表情/热键映射
+emotion_mapping:
+  happy:
+    expression_file: "happy.exp3.json"
+  sad:
+    expression_file: "sad.exp3.json"
+  angry:
+    expression_file: "angry.exp3.json"
+  neutral:
+    expression_file: "neutral.exp3.json"
+  surprised:
+    expression_file: "surprised.exp3.json"
+  thinking:
+    expression_file: "thinking.exp3.json"

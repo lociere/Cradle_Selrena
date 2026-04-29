@@ -1,223 +1,166 @@
 # Cradle Selrena 配置系统总览
 
-> **架构版本**: 2.0.0 (DDD 分层架构)  
-> **最后更新**: 2024  
-> **适用范围**: 整个项目（所有语言共享）
+> 架构基线：Unified Dual-Shell + Python Soul + TS Kernel
+> 适用范围：当前仓库 configs/ 目录
 
-## 📁 配置目录结构
+## 当前配置目录结构
 
-```
+```text
 configs/
-├── general.yaml               # 全局通用配置（项目名称/版本/路径等）
-├── kernel/                    # 内核层配置（TS 内核专用）
-│   ├── ipc.yaml
-│   ├── lifecycle.yaml
-│   ├── memory.yaml
-│   └── plugin.yaml
-├── renderer/                  # 渲染层配置（UI/窗口/Live2D 等）
-│   ├── live2d.yaml
-│   └── window.yaml
-├── python-ai/                 # Python AI 层配置（人格/推理/LLM）
-│   ├── persona.yaml
-│   ├── inference.yaml
-│   └── llm.yaml
-├── plugin/                    # 插件系统配置（启用插件列表等）
-│   └── enabled-plugins.yaml
-├── plugin-samples/            # 插件示例配置（模板 / 参考用）
-│   ├── core-scene.yaml
-│   ├── live-platform.yaml
-│   └── napcat-qq.yaml
-└── secret/                    # 私密配置（不应提交到 Git）
+├── system.yaml                 # 系统级配置：日志、IPC、生命周期、插件宿主、入站防护
+├── persona.yaml                # Soul 配置：人格、推理、LLM、嵌入、多模态、动作流
+├── active-plugins.yaml         # 当前启用的 Vessel / Extension 清单
+├── knowledge-base.json         # 知识库与人格素材
+├── plugin/
+│   ├── vessel-napcat.yaml      # NapCat Vessel 配置
+│   └── vessel-vtube-studio.yaml# VTube Studio Vessel 配置
+└── secret/
     ├── secrets.yaml
     └── secrets.example.yaml
 ```
 
-## 🏗️ 架构分层说明
+当前仓库不再使用以下旧结构：
 
-### Core 层 (`configs/core/`)
-**职责**: 系统级全局配置，不随业务逻辑变化
+- general.yaml
+- kernel/*.yaml 分拆目录
+- renderer/*.yaml 分拆目录
+- python-ai/*.yaml 分拆目录
+- plugin-samples/
 
-**包含**:
-- 系统标识（名称、版本）
-- 日志配置（级别、格式、输出目标）
-- 全局超时设置
-- 重试策略
+## 配置职责划分
 
-**示例**:
-```yaml
-system:
-  name: "Cradle Selrena"
-  version: "2.0.0"
-  logging:
-    level: "INFO"
-    format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-  timeouts:
-    llm_request: 120
-    api_call: 30
-```
+### system.yaml
 
-### Domain 层 (`configs/domain/`)
-**职责**: 核心业务逻辑配置，定义 AI 的"灵魂"
+负责系统运行时，不负责人格和推理语义。
 
-**包含**:
-- **人格 (Persona)**: 身份、性格、语言风格、情感系统、语音
-  - 核心配置：`configs/domain/core.yaml`
-  - 人设专属：`configs/domain/persona/`（提示词模板、情感模型）
-- **记忆 (Memory)**: 存储策略、短期/长期记忆、知识管理
-- **决策 (Decision)**: 思考模式、响应策略、行为参数
+主要内容：
 
-**示例**:
-```yaml
-persona:
-  name: "Selrena"
-  identity:
-    role: "AI 伴侣"
-    traits: ["温柔", "聪慧", "善解人意"]
-  language:
-    style: "亲切自然"
-    formality: "casual"
-  emotions:
-    enabled: true
-    model: "configs/domain/persona/emotions.json"
+- app_name / app_version
+- log_level
+- data_dir / log_dir / backup_dir
+- ipc
+- lifecycle
+- plugin
+- ingress_gate
 
-memory:
-  storage:
-    type: "hybrid"
-    base_path: "data/selrena/memory"
-  short_term:
-    max_messages: 50
-    ttl_hours: 24
-  long_term:
-    consolidation_threshold: 10
-    embedding_model: "m3e-small"
+适合放在这里的内容：
 
-decision:
-  thinking_mode: "balanced"
-  generation:
-    temperature: 0.7
-    top_p: 0.9
-```
+- Kernel 如何启动和停止
+- TS <-> Python IPC 参数
+- 插件宿主超时与默认权限
+- 全局入站防护策略
 
-### Inference 层 (`configs/inference/`)
-**职责**: 推理引擎与模型管理
+不应放在这里的内容：
 
-**包含**:
-- **LLM 引擎池**: 多个 LLM 引擎配置、负载均衡、健康检查
-- **模型管理**: 缓存策略、自动下载、预热
-- **嵌入模型**: 文本向量化模型配置
-- **语音识别**: ASR 配置（可选）
+- 唤醒词
+- 人格提示词
+- 多模态路由策略
+- 模型与推理参数
 
-**示例**:
-```yaml
-llm:
-  default_engine: "local_qwen"
-  engines:
-    local_qwen:
-      type: "llama_cpp"
-      model_path: "assets/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
-      n_ctx: 4096
-      n_threads: 8
-      inference:
-        temperature: 0.7
-        top_p: 0.9
-  pool:
-    max_instances: 2
-    recycling:
-      idle_timeout_seconds: 300
+### persona.yaml
 
-embedding:
-  default_model: "m3e-small"
-  models:
-    m3e-small:
-      type: "sentence_transformers"
-      model_path: "assets/models/m3e-small"
-      device: "cpu"
-```
+负责 Soul 的人格与推理配置，是 AI 层的唯一主配置入口。
 
-### Adapters 层 (`configs/adapters/`)
-**职责**: 外部平台适配与协议转换
+主要内容：
 
-**包含**:
-- **NapCat (QQ)**: 连接配置、消息处理、群聊/私聊策略
-- **其他平台**: Discord、Telegram 等（预留）
-- **通用适配器**: 消息标准化、资源管理、事件总线
+- persona
+- inference.model
+- inference.life_clock
+- inference.memory
+- inference.multimodal
+- inference.action_stream
+- inference.embedding
+- llm
 
-**示例**:
-```yaml
-napcat:
-  enabled: false
-  connection:
-    type: "websocket"
-    ws_url: "ws://localhost:8080/ws"
-  bot_qq: 1234567890
-  wake_words: ["月见", "selrena", "Selrena"]
-  message:
-    filter:
-      ignore_self: true
-    preprocessing:
-      emoji:
-        convert_to_text: true
-      image:
-        download: true
-        caption_enabled: true
-    rate_limit:
-      enabled: true
-      max_messages_per_minute: 20
-```
+适合放在这里的内容：
 
-### Platforms 层 (`configs/platforms/`)
-**职责**: 平台特定的前端与交互配置
+- 月见人格锚点
+- 推理温度、最大 token
+- 生命时钟与记忆策略
+- 多模态与动作流开关
+- 嵌入模型和 LLM provider
 
-**包含**:
-- **Live2D**: 模型加载、表情映射、动作触发
-- **Audio Engine**: TTS 配置、语音播放、音效管理
-- **其他平台**: Web UI、桌面应用等（预留）
+### active-plugins.yaml
 
-**示例**:
-```yaml
-# live2d.yaml
-live2d:
-  enabled: true
-  model:
-    path: "assets/live2d/models/CurrentModel"
-    scale: 1.0
-    position:
-      x: 0.5
-      y: 0.5
-  expression:
-    mapping:
-      happy: "exp_01.exp3.json"
-      sad: "exp_02.exp3.json"
-      angry: "exp_03.exp3.json"
-  motion:
-    idle: "idle_01.motion3.json"
-    tap_head: "tap_head_01.motion3.json"
+负责声明当前要启用哪些 Vessel / Extension。
 
-# audio.yaml
-audio:
-  tts:
-    engine: "azure"
-    voice: "zh-CN-XiaoxiaoNeural"
-    rate: 1.0
-    volume: 1.0
-  playback:
-    device: "default"
-    buffer_size: 2048
-```
+当前典型内容：
 
-### Environments 层 (`configs/environments/`)
-**职责**: 环境特定的差异化配置
+- vessel-napcat
+- vessel-vtube-studio
 
-**包含**:
-- **Development**: 调试模式、热重载、性能分析
-- **Production**: 性能优化、监控、备份、安全
-- **Testing**: 模拟数据、最小模型
+注意：
 
-**示例**:
-```yaml
-# development.yaml
-development:
-  debug: true
+- Native Shell 不通过这里启用。
+- renderer-ui 和 renderer-avatar 属于系统本体，不属于 active plugins。
+
+### plugin/*.yaml
+
+负责每个插件自己的私有配置。
+
+当前文件：
+
+- vessel-napcat.yaml
+- vessel-vtube-studio.yaml
+
+规则：
+
+- 文件名应与插件 ID 保持一致。
+- 旧插件配置文件不应长期与新命名并存。
+- 如果插件 schema 允许 passthrough 字段，仍应优先保持配置命名清晰，不把历史垃圾无限保留。
+
+### secret/
+
+负责敏感凭据，不能把真实密钥散落到普通配置文件中。
+
+规则：
+
+- 优先通过环境变量或 secrets.yaml 注入。
+- 普通配置文件中只保留 access_token_env 这类引用字段。
+- 不应把真实 token 复制到多个文件中。
+
+## 维护规则
+
+### 1. 先改主配置，再改说明文档
+
+配置体系调整时，必须同步更新：
+
+- configs/README.md
+- 对应 yaml 文件
+- 读取这些配置的代码
+
+### 2. 禁止继续扩散旧目录心智模型
+
+后续文档和代码中，不要再写：
+
+- configs/kernel/
+- configs/python-ai/
+- configs/renderer/
+
+当前仓库已经统一为：
+
+- system.yaml
+- persona.yaml
+- active-plugins.yaml
+- plugin/*.yaml
+
+### 3. 配置文件名应服务于开发判断
+
+命名应让人一眼知道配置属于哪一层：
+
+- system：系统运行时
+- persona：Soul 人格与推理
+- active-plugins：插件装载面
+- plugin/vessel-napcat：具体插件私有配置
+
+### 4. Native Shell 不写进 plugin 配置目录
+
+桌面壳和头像壳不是插件，所以不要新增：
+
+- configs/plugin/renderer-ui.yaml
+- configs/plugin/renderer-avatar.yaml
+
+这类配置如果未来需要，应进入 system.yaml 或专门的 shell 配置体系，而不是伪装成 plugin。
   logging:
     level: "DEBUG"
   hot_reload:
