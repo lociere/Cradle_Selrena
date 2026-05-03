@@ -3,6 +3,7 @@
  * 全项目生命周期总控，按顺序调度所有模块的启动/停止
  * 是整个内核的入口根节点
  */
+import process from 'node:process';
 import {
   createTraceContext,
   AppStartingEvent,
@@ -22,8 +23,8 @@ import { DBManager } from "./core/foundation/storage/db-manager";
 import { MemoryRepository } from "./core/foundation/storage/repositories/memory-repository";
 import { IPCServer } from "./core/infrastructure/ipc-broker/ipc-server";
 import { PythonAIManager } from "./core/application/capabilities/inference/python-manager";
-import { PluginManager } from "./core/host/plugin-manager";
-import { PluginHostAppService } from "./core/application/services/plugin-host-app.service";
+import { ExtensionManager } from "./core/host/extension-manager";
+import { ExtensionHostAppService } from "./core/application/services/extension-host-app.service";
 import { ActionStreamManager } from "./core/application/capabilities/action-stream/action-stream-manager";
 import { VisualCommandDispatcher } from "./core/application/capabilities/action-stream/visual-command-dispatcher";
 import { AvatarEngineController } from "./core/application/capabilities/avatar-engine/avatar-engine-controller";
@@ -34,7 +35,7 @@ import { MemorySyncManager } from "./core/application/capabilities/memory/memory
 import { AttentionSessionManager } from "./core/domain/attention/attention-session-manager";
 import { PerceptionAppService } from "./core/application/services/perception-app.service";
 import { SceneRoutingManager } from "./core/application/capabilities/scene/scene-routing-manager";
-import { PluginSceneTranscriptService } from "./core/application/capabilities/scene/plugin-scene-transcript-service";
+import { ExtensionSceneTranscriptService } from "./core/application/capabilities/scene/extension-scene-transcript-service";
 import { AudioService } from "./core/application/capabilities/audio/audio-service";
 import { ChannelRuntimeManager } from "./core/application/channel/ChannelRuntimeManager";
 import { IngressGateManager } from "./core/foundation/ingress-gate/ingress-gate-manager";
@@ -49,7 +50,7 @@ export class App {
   private static _instance: App | null = null;
   private _state: AppLifecycleState = AppLifecycleState.UNINITIALIZED;
   private _startupTimeMs: number = 0;
-  private _pluginManager: PluginManager | null = null;
+  private _extensionManager: ExtensionManager | null = null;
 
   /**
    * 获取单例实例
@@ -163,29 +164,29 @@ export class App {
       logger.info("Python AI层启动完成", { startup_time_ms: aiStartupTime });
 
       // ======================================
-      // 步骤6：初始化插件管理器，加载插件
+      // 步骤6：初始化扩展管理器，加载扩展
       // ======================================
-      const pluginStart = Date.now();
+      const extensionStart = Date.now();
       const perceptionAppService = new PerceptionAppService(
         SceneRoutingManager.instance,
-        PluginSceneTranscriptService.instance,
+        ExtensionSceneTranscriptService.instance,
         AudioService.instance,
         ChannelRuntimeManager.instance,
         AttentionSessionManager.instance
       );
-      const pluginHostService = new PluginHostAppService(perceptionAppService);
-      const pluginManager = new PluginManager(pluginHostService);
-      this._pluginManager = pluginManager;
-      await pluginManager.init();
-      await pluginManager.startAllPlugins();
-      const pluginStartupTime = Date.now() - pluginStart;
+      const extensionHostService = new ExtensionHostAppService(perceptionAppService);
+      const extensionManager = new ExtensionManager(extensionHostService);
+      this._extensionManager = extensionManager;
+      await extensionManager.init();
+      await extensionManager.startAllExtensions();
+      const extensionStartupTime = Date.now() - extensionStart;
       await EventBus.instance.publish(
         new ModuleStartedEvent({
-          moduleName: "plugin-manager",
-          startupTimeMs: pluginStartupTime,
+          moduleName: "extension-manager",
+          startupTimeMs: extensionStartupTime,
         }, rootTraceContext)
       );
-      logger.info("插件管理器启动完成", { startup_time_ms: pluginStartupTime });
+      logger.info("扩展管理器启动完成", { startup_time_ms: extensionStartupTime });
 
       // ======================================
       // 步骤7：初始化动作流管理器
@@ -194,11 +195,26 @@ export class App {
       VisualCommandDispatcher.instance.init();
 
       // 原生整合：初始化 Avatar引擎 与 Desktop UI 引擎
-      AvatarEngineController.instance.init();
-      logger.info("AvatarEngine 启动完成");
+      if (globalConfig.system.renderer.avatar_shell.enabled) {
+        AvatarEngineController.instance.init(globalConfig.system.renderer.avatar_shell);
+        logger.info("AvatarEngine 启动完成", {
+          port: globalConfig.system.renderer.avatar_shell.port,
+        });
+      } else {
+        logger.info("AvatarEngine 已禁用");
+      }
 
-      DesktopUIController.instance.init(perceptionAppService);
-      logger.info("DesktopUIEngine 启动完成");
+      if (globalConfig.system.renderer.desktop_shell.enabled) {
+        DesktopUIController.instance.init(
+          perceptionAppService,
+          globalConfig.system.renderer.desktop_shell,
+        );
+        logger.info("DesktopUIEngine 启动完成", {
+          port: globalConfig.system.renderer.desktop_shell.port,
+        });
+      } else {
+        logger.info("DesktopUIEngine 已禁用");
+      }
 
       await EventBus.instance.publish(
         new ModuleStartedEvent({
@@ -325,14 +341,14 @@ export class App {
       }, stopTraceContext));
       logger.info("动作流管理器已停止");
 
-      // 4. 停止插件管理器
-      if (this._pluginManager) {
-        await this._pluginManager.shutdown();
+      // 4. 停止扩展管理器
+      if (this._extensionManager) {
+        await this._extensionManager.shutdown();
       }
       await EventBus.instance.publish(new ModuleStoppedEvent({
-        moduleName: "plugin-manager",
+        moduleName: "extension-manager",
       }, stopTraceContext));
-      logger.info("插件管理器已停止");
+      logger.info("扩展管理器已停止");
 
       // 5. 停止Python AI层
       await PythonAIManager.instance.stop();
@@ -387,3 +403,4 @@ export class App {
     }
   }
 }
+

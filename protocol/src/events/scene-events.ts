@@ -1,41 +1,41 @@
-/**
- * 场景注意力相关事件
- * 连接 Vessel 插件层与 Domain 生物钟层的注意力信号。
+﻿/**
+ * 鍦烘櫙娉ㄦ剰鍔涚浉鍏充簨浠?
+ * 杩炴帴閫傞厤鍣ㄦ彃浠跺眰涓?Domain 鐢熺墿閽熷眰鐨勬敞鎰忓姏淇″彿銆?
  */
 import { DomainEvent } from './domain-events';
 import { TraceContext } from '../core';
 
 /**
- * 频道场景注意力变化事件
- * 由 Vessel 插件通过 IPluginHostService.reportSceneAttention 触发，
- * LifeClockManager 订阅此事件以更新有机体注意力状态。
+ * 棰戦亾鍦烘櫙娉ㄦ剰鍔涘彉鍖栦簨浠?
+ * 鐢遍€傞厤鍣ㄦ彃浠堕€氳繃 IExtensionHostService.reportSceneAttention 瑙﹀彂锛?
+ * LifeClockManager 璁㈤槄姝や簨浠朵互鏇存柊鏈夋満浣撴敞鎰忓姏鐘舵€併€?
  */
 export class SceneAttentionChangedEvent extends DomainEvent {
   public readonly event_type = 'SceneAttentionChangedEvent' as const;
   public readonly channelId: string;
   public readonly focused: boolean;
-  public readonly pluginId: string;
-  /** 插件自定义的焦点持续时长（ms）；未提供时由 LifeClockManager 使用全局默认值 */
+  public readonly extensionId: string;
+  /** 鎻掍欢鑷畾涔夌殑鐒︾偣鎸佺画鏃堕暱锛坢s锛夛紱鏈彁渚涙椂鐢?LifeClockManager 浣跨敤鍏ㄥ眬榛樿鍊?*/
   public readonly durationMs?: number;
   public readonly trace_context: TraceContext;
 
   constructor(
-    payload: { channelId: string; focused: boolean; pluginId: string; durationMs?: number },
+    payload: { channelId: string; focused: boolean; extensionId: string; durationMs?: number },
     trace_context?: TraceContext
   ) {
     super();
     this.channelId = payload.channelId;
     this.focused = payload.focused;
-    this.pluginId = payload.pluginId;
+    this.extensionId = payload.extensionId;
     this.durationMs = payload.durationMs;
     this.trace_context = trace_context ?? { trace_id: '' };
   }
 }
 
 /**
- * 有机体注意力状态变化事件
- * 由 LifeClockManager 综合各频道注意力后发布，
- * 其他模块（如 AttentionSessionManager）订阅此事件调整行为策略。
+ * 鏈夋満浣撴敞鎰忓姏鐘舵€佸彉鍖栦簨浠?
+ * 鐢?LifeClockManager 缁煎悎鍚勯閬撴敞鎰忓姏鍚庡彂甯冿紝
+ * 鍏朵粬妯″潡锛堝 AttentionSessionManager锛夎闃呮浜嬩欢璋冩暣琛屼负绛栫暐銆?
  */
 export type OrganismAttentionMode = 'ACTIVE' | 'PASSIVE' | 'IDLE';
 
@@ -55,3 +55,4 @@ export class OrganismAttentionChangedEvent extends DomainEvent {
     this.trace_context = trace_context ?? { trace_id: '' };
   }
 }
+

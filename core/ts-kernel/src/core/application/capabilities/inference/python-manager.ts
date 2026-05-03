@@ -143,7 +143,7 @@ export class PythonAIManager {
 
       const repoRoot = resolveRepoRoot();
 
-      const pythonCoreDir = path.resolve(repoRoot, "core", "python-soul");
+      const pythonCoreDir = path.resolve(repoRoot, "core", "ai-core");
       const venvPythonPath = process.platform === "win32"
         ? path.resolve(pythonCoreDir, ".venv", "Scripts", "python.exe")
         : path.resolve(pythonCoreDir, ".venv", "bin", "python");

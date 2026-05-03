@@ -1,19 +1,19 @@
 # Cradle Selrena 配置系统总览
 
-> 架构基线：Unified Dual-Shell + Python Soul + TS Kernel
+> 架构基线：Unified Dual-Shell + AI Core + TS Kernel
 > 适用范围：当前仓库 configs/ 目录
 
 ## 当前配置目录结构
 
 ```text
 configs/
-├── system.yaml                 # 系统级配置：日志、IPC、生命周期、插件宿主、入站防护
-├── persona.yaml                # Soul 配置：人格、推理、LLM、嵌入、多模态、动作流
-├── active-plugins.yaml         # 当前启用的 Vessel / Extension 清单
+├── system.yaml                 # 系统级配置：日志、IPC、生命周期、扩展宿主、入站防护
+├── persona.yaml                # AI Core 配置：人格、推理、LLM、嵌入、多模态、动作流
+├── active-extensions.yaml      # 当前启用的 Adapter / Extension 清单
 ├── knowledge-base.json         # 知识库与人格素材
-├── plugin/
-│   ├── vessel-napcat.yaml      # NapCat Vessel 配置
-│   └── vessel-vtube-studio.yaml# VTube Studio Vessel 配置
+├── extension/
+│   ├── napcat-adapter.yaml         # NapCat Adapter 配置
+│   └── vtube-studio-adapter.yaml   # VTube Studio Adapter 配置
 └── secret/
     ├── secrets.yaml
     └── secrets.example.yaml
@@ -25,7 +25,7 @@ configs/
 - kernel/*.yaml 分拆目录
 - renderer/*.yaml 分拆目录
 - python-ai/*.yaml 分拆目录
-- plugin-samples/
+- extension-samples/
 
 ## 配置职责划分
 
@@ -40,14 +40,14 @@ configs/
 - data_dir / log_dir / backup_dir
 - ipc
 - lifecycle
-- plugin
+- extension
 - ingress_gate
 
 适合放在这里的内容：
 
 - Kernel 如何启动和停止
 - TS <-> Python IPC 参数
-- 插件宿主超时与默认权限
+- 扩展宿主超时与默认权限
 - 全局入站防护策略
 
 不应放在这里的内容：
@@ -59,7 +59,7 @@ configs/
 
 ### persona.yaml
 
-负责 Soul 的人格与推理配置，是 AI 层的唯一主配置入口。
+负责 AI Core 的人格与推理配置，是认知层的唯一主配置入口。
 
 主要内容：
 
@@ -80,34 +80,34 @@ configs/
 - 多模态与动作流开关
 - 嵌入模型和 LLM provider
 
-### active-plugins.yaml
+### active-extensions.yaml
 
-负责声明当前要启用哪些 Vessel / Extension。
+负责声明当前要启用哪些 Adapter / Extension。
 
 当前典型内容：
 
-- vessel-napcat
-- vessel-vtube-studio
+- napcat-adapter
+- vtube-studio-adapter
 
 注意：
 
 - Native Shell 不通过这里启用。
-- renderer-ui 和 renderer-avatar 属于系统本体，不属于 active plugins。
+- renderer-ui 和 renderer-avatar 属于系统本体，不属于 active extensions。
 
-### plugin/*.yaml
+### extension/*.yaml
 
 负责每个插件自己的私有配置。
 
 当前文件：
 
-- vessel-napcat.yaml
-- vessel-vtube-studio.yaml
+- napcat-adapter.yaml
+- vtube-studio-adapter.yaml
 
 规则：
 
-- 文件名应与插件 ID 保持一致。
-- 旧插件配置文件不应长期与新命名并存。
-- 如果插件 schema 允许 passthrough 字段，仍应优先保持配置命名清晰，不把历史垃圾无限保留。
+- 文件名应与扩展 ID 保持一致。
+- 旧扩展配置文件不应长期与新命名并存。
+- 如果扩展 schema 允许 passthrough 字段，仍应优先保持配置命名清晰，不把历史垃圾无限保留。
 
 ### secret/
 
@@ -141,26 +141,26 @@ configs/
 
 - system.yaml
 - persona.yaml
-- active-plugins.yaml
-- plugin/*.yaml
+- active-extensions.yaml
+- extension/*.yaml
 
 ### 3. 配置文件名应服务于开发判断
 
 命名应让人一眼知道配置属于哪一层：
 
 - system：系统运行时
-- persona：Soul 人格与推理
-- active-plugins：插件装载面
-- plugin/vessel-napcat：具体插件私有配置
+- persona：AI Core 人格与推理
+- active-extensions：扩展装载面
+- extension/napcat-adapter：具体扩展私有配置
 
-### 4. Native Shell 不写进 plugin 配置目录
+### 4. Native Shell 不写进 extension 配置目录
 
 桌面壳和头像壳不是插件，所以不要新增：
 
-- configs/plugin/renderer-ui.yaml
-- configs/plugin/renderer-avatar.yaml
+- configs/extension/renderer-ui.yaml
+- configs/extension/renderer-avatar.yaml
 
-这类配置如果未来需要，应进入 system.yaml 或专门的 shell 配置体系，而不是伪装成 plugin。
+这类配置如果未来需要，应进入 system.yaml 或专门的 shell 配置体系，而不是伪装成 extension。
   logging:
     level: "DEBUG"
   hot_reload:

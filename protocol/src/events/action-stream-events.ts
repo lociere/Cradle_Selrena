@@ -1,6 +1,6 @@
-import { DomainEvent } from "./domain-events";
+﻿import { DomainEvent } from "./domain-events";
 import { TraceContext } from "../core";
-import type { VisualCommandPayload } from "../plugin/sdk";
+import type { VisualCommandPayload } from "../extension/sdk";
 
 export interface ActionStreamBasePayload {
   scene_id: string;
@@ -59,9 +59,9 @@ export class ActionStreamCancelledEvent extends DomainEvent {
 }
 
 /**
- * 视觉指令分发事件。
- * 从内核 ActionStream 翻译后发布，由渲染器插件（VTube Studio / Unity Bridge）订阅执行。
- * 蓝图术语：提线木偶指令。
+ * 瑙嗚鎸囦护鍒嗗彂浜嬩欢銆?
+ * 浠庡唴鏍?ActionStream 缈昏瘧鍚庡彂甯冿紝鐢辨覆鏌撳櫒鎻掍欢锛圴Tube Studio / Unity Bridge锛夎闃呮墽琛屻€?
+ * 钃濆浘鏈锛氭彁绾挎湪鍋舵寚浠ゃ€?
  */
 export class VisualCommandDispatchEvent extends DomainEvent {
   public readonly event_type = "VisualCommandDispatchEvent";

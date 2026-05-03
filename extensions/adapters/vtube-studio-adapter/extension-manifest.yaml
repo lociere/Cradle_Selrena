@@ -1,0 +1,15 @@
+id: vtube-studio-adapter
+name: VTube Studio Adapter
+version: 0.1.0
+author: Selrena Team
+description: 通过 WebSocket 连接 VTube Studio API，将内核视觉指令转化为 VTS 表情与动作控制
+main: dist/index.js
+minAppVersion: 0.1.0
+tags:
+  - adapter
+  - vtube-studio
+  - avatar
+permissions:
+  - CONFIG_READ_SELF
+  - EVENT_SUBSCRIBE
+  - COMMAND_REGISTER

@@ -1,0 +1,11 @@
+id: my-extension
+name: My Extension
+version: 0.1.0
+author: Your Name
+description: Example extension scaffold for Cradle Selrena.
+main: dist/index.js
+minAppVersion: 0.1.0
+tags:
+  - tool
+permissions:
+  - CONFIG_READ_SELF

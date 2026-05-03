@@ -13,7 +13,7 @@ export class SceneRoutingManager {
   private constructor() {}
 
   public resolve(request: SceneRoutingRequest): SceneRoutingResult {
-    const vesselId = String(request.source?.vessel_id || "unknown").trim() || "unknown";
+    const adapterId = String(request.source?.adapter_id || "unknown").trim() || "unknown";
     const sourceType = request.source?.source_type || "unknown";
     const sourceId = String(request.source?.source_id || "default").trim() || "default";
     const actorId = String(request.routing?.actor?.actor_id || "").trim();
@@ -21,7 +21,7 @@ export class SceneRoutingManager {
     const requestedPolicy = request.routing?.session_policy || "by_source";
     const sessionPolicy = requestedPolicy === "by_actor" && actorId ? "by_actor" : "by_source";
 
-    let sceneId = `${vesselId}:${sourceType}:${sourceId}`;
+    let sceneId = `${adapterId}:${sourceType}:${sourceId}`;
     if (sessionPolicy === "by_actor") {
       sceneId = `${sceneId}:actor:${actorId}`;
     }
@@ -29,7 +29,7 @@ export class SceneRoutingManager {
     return {
       scene_id: sceneId,
       source: {
-        vessel_id: vesselId,
+        adapter_id: adapterId,
         source_type: sourceType,
         source_id: sourceId,
       },

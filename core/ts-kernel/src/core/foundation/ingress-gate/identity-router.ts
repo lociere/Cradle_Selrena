@@ -4,7 +4,7 @@
  * v4.5 Phase 1: Schema-First ACL (Anti-Corruption Layer)
  *
  * 职责：
- *   1. 将平台私有 ID (user_id/group_id) 映射为系统中立的 vessel_id
+ *   1. 将平台私有 ID (user_id/group_id) 映射为系统中立的 adapter_id
  *   2. 清洗 CQ 码等富文本协议，转化为中立 MultimodalContent
  *   3. 通过 Schema 校验组装标准 PerceptionMessageRequest 后才允许转发
  *
@@ -21,9 +21,9 @@ const logger = getLogger('identity-router');
 // ── CQ 码解析正则 ─────────────────────────────────────────
 const CQ_CODE_RE = /\[CQ:(\w+)(?:,([^\]]*))?\]/g;
 
-/** vessel_id 映射条目 */
-interface VesselMapping {
-  vesselId: string;
+/** adapter_id 映射条目 */
+interface AdapterMapping {
+  adapterId: string;
   platform: string;
   createdAt: number;
 }
@@ -35,8 +35,8 @@ interface VesselMapping {
 export class IdentityRouter {
   private static _instance: IdentityRouter | null = null;
 
-  /** platform:raw_id → vessel_id 映射缓存 */
-  private _vesselMap: Map<string, VesselMapping> = new Map();
+  /** platform:raw_id → adapter_id 映射缓存 */
+  private _adapterMap: Map<string, AdapterMapping> = new Map();
 
   public static get instance(): IdentityRouter {
     if (!IdentityRouter._instance) {
@@ -52,36 +52,36 @@ export class IdentityRouter {
   // ═══════════════════════════════════════════════════════════
 
   /**
-   * 将平台私有 ID 映射为系统中立 vessel_id。
+   * 将平台私有 ID 映射为系统中立 adapter_id。
    * 若映射不存在则自动创建（首次接触等价于注册）。
    */
-  public resolveVesselId(platform: string, rawId: string): string {
+  public resolveAdapterId(platform: string, rawId: string): string {
     const key = `${platform}:${rawId}`;
-    const existing = this._vesselMap.get(key);
-    if (existing) return existing.vesselId;
+    const existing = this._adapterMap.get(key);
+    if (existing) return existing.adapterId;
 
-    const vesselId = `v_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    this._vesselMap.set(key, {
-      vesselId,
+    const adapterId = `a_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    this._adapterMap.set(key, {
+      adapterId,
       platform,
       createdAt: Date.now(),
     });
-    logger.info('新 vessel 身份已注册', { platform, raw_id: rawId, vessel_id: vesselId });
-    return vesselId;
+    logger.info('新 adapter 身份已注册', { platform, raw_id: rawId, adapter_id: adapterId });
+    return adapterId;
   }
 
   /**
    * 批量导入已有映射（启动时从持久化层加载）
    */
-  public loadMappings(entries: Array<{ platform: string; rawId: string; vesselId: string }>): void {
+  public loadMappings(entries: Array<{ platform: string; rawId: string; adapterId: string }>): void {
     for (const e of entries) {
-      this._vesselMap.set(`${e.platform}:${e.rawId}`, {
-        vesselId: e.vesselId,
+      this._adapterMap.set(`${e.platform}:${e.rawId}`, {
+        adapterId: e.adapterId,
         platform: e.platform,
         createdAt: Date.now(),
       });
     }
-    logger.info('vessel 映射已加载', { count: entries.length });
+    logger.info('adapter 映射已加载', { count: entries.length });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -174,11 +174,11 @@ export class IdentityRouter {
     addressMode?: 'direct' | 'ambient';
     timestamp?: number;
   }): PerceptionMessageRequest {
-    const vesselId = this.resolveVesselId(rawEvent.platform, rawEvent.rawUserId);
+    const adapterId = this.resolveAdapterId(rawEvent.platform, rawEvent.rawUserId);
     const sourceType = rawEvent.rawGroupId ? 'group' : 'private';
     const sourceId = rawEvent.rawGroupId
-      ? this.resolveVesselId(rawEvent.platform, rawEvent.rawGroupId)
-      : vesselId;
+      ? this.resolveAdapterId(rawEvent.platform, rawEvent.rawGroupId)
+      : adapterId;
 
     const { text, items } = this.sanitizeContent(rawEvent.rawText);
     const modality: string[] = ['text'];
@@ -203,7 +203,7 @@ export class IdentityRouter {
 
     logger.debug('感知请求已组装', {
       trace_id: traceId,
-      vessel_id: vesselId,
+      adapter_id: adapterId,
       source: request.source,
       modality,
       item_count: items.length,

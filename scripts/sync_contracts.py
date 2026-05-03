@@ -3,7 +3,7 @@ sync_contracts.py — Schema-First 契约同步工具
 ═══════════════════════════════════════════════
 从 protocol/src/schemas/*.schema.json 生成双端代码：
   - TypeScript 接口     → protocol/src/generated/  (json-schema-to-typescript)
-  - Python Pydantic 模型 → python-soul/src/selrena/ipc_server/contracts/generated/  (datamodel-codegen)
+    - Python Pydantic 模型 → ai-core/src/selrena/ipc_server/contracts/generated/  (datamodel-codegen)
 
 用法：
   python scripts/sync_contracts.py            # 同步所有 schema
@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = ROOT / "protocol" / "src" / "schemas"
 TS_OUT_DIR = ROOT / "protocol" / "src" / "generated"
-PY_OUT_DIR = ROOT / "core" / "python-soul" / "src" / "selrena" / "ipc_server" / "contracts" / "generated"
+PY_OUT_DIR = ROOT / "core" / "ai-core" / "src" / "selrena" / "ipc_server" / "contracts" / "generated"
 CHECKSUM_FILE = ROOT / "protocol" / "src" / "schemas" / ".checksum"
 
 

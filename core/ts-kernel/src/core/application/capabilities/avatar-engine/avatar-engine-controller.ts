@@ -2,7 +2,11 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { EventBus } from '../../../foundation/event-bus/event-bus';
 import { getLogger } from '../../../foundation/logger/logger';
 import { VisualCommandDispatchEvent, ActionStreamCompletedEvent } from '@cradle-selrena/protocol';
-import type { VisualCommandPayload, ActionStreamCompletePayload } from '@cradle-selrena/protocol';
+import type {
+  AvatarShellRuntimeConfig,
+  VisualCommandPayload,
+  ActionStreamCompletePayload,
+} from '@cradle-selrena/protocol';
 
 const logger = getLogger('avatar-engine');
 
@@ -25,8 +29,10 @@ export class AvatarEngineController {
   private _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private _lastHeartbeat = 0;
   private _initialized = false;
+  private _heartbeatIntervalMs = 10000;
+  private _heartbeatTimeoutMs = 30000;
 
-  private _emotionMapping: Record<string, { expression_id?: string; motion_group?: string; animator_trigger?: string }> = {
+  private _emotionMapping: AvatarShellRuntimeConfig['emotion_mapping'] = {
     happy: { expression_id: "happy", motion_group: "happy", animator_trigger: "happy" },
     sad: { expression_id: "sad", motion_group: "sad", animator_trigger: "sad" },
     angry: { expression_id: "angry", motion_group: "angry", animator_trigger: "angry" },
@@ -43,10 +49,14 @@ export class AvatarEngineController {
 
   private constructor() {}
 
-  public init(port: number = 8082): void {
+  public init(config: AvatarShellRuntimeConfig): void {
     if (this._initialized) return;
 
-    this._wss = new WebSocketServer({ port });
+    this._heartbeatIntervalMs = config.heartbeat_interval_ms;
+    this._heartbeatTimeoutMs = config.heartbeat_timeout_ms;
+    this._emotionMapping = config.emotion_mapping;
+
+    this._wss = new WebSocketServer({ port: config.port });
     
     this._wss.on('connection', (ws: WebSocket) => {
       logger.info('Unity 客户端已连接');
@@ -93,15 +103,15 @@ export class AvatarEngineController {
         };
         this.broadcast(JSON.stringify(pingFrame));
 
-        if (this._unityReady && Date.now() - this._lastHeartbeat > 30000) {
+        if (this._unityReady && Date.now() - this._lastHeartbeat > this._heartbeatTimeoutMs) {
           logger.warn('Unity 心跳超时，标记为未就绪');
           this._unityReady = false;
         }
       }
-    }, 10000);
+    }, this._heartbeatIntervalMs);
 
     this._initialized = true;
-    logger.info('AvatarEngineController 已初始化', { port });
+    logger.info('AvatarEngineController 已初始化', { port: config.port });
   }
 
   public stop(): void {
@@ -119,7 +129,7 @@ export class AvatarEngineController {
     logger.info('AvatarEngineController 已停止');
   }
 
-  private _handleUpstream(frame: UnityUpstreamFrame, ws: WebSocket): void {
+  private _handleUpstream(frame: UnityUpstreamFrame, _ws: WebSocket): void {
     if (!frame || typeof frame !== 'object' || !('type' in frame)) {
       logger.warn('Unity 发送了无效帧');
       return;

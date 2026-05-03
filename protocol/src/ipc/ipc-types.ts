@@ -96,7 +96,7 @@ export type PerceptionModalityType = "text" | "image" | "video";
  * 上游来源元数据：只保留跨平台通用字段，禁止平台私有协议字段进入AI层。
  */
 export interface MessageSourceMeta {
-  vessel_id: string;
+  adapter_id: string;
   source_type: MessageSourceType;
   source_id: string;
 }
@@ -120,7 +120,7 @@ export interface ModelInputPayload {
 
 /**
  * 通用感知消息：第三方平台接入统一走该类型。
- * content 中不携带任何 Vessel 私有字段，Soul 层只能读到语义结果。
+ * content 中不携带任何适配器私有字段，AI Core 只能读到语义结果。
  */
 export interface PerceptionMessageRequest {
   id: string;
@@ -128,11 +128,11 @@ export interface PerceptionMessageRequest {
   /** 来源标识，等同于 scene_id */
   source: string;
   timestamp: number;
-  /** 熟悉度 0-10，由 Vessel Cortex 计算后注入，Soul 层直接使用 */
+  /** 熟悉度 0-10，由适配器归一化层计算后注入，AI Core 直接使用 */
   familiarity: number;
   /**
-   * 寻址模式：由 Vessel Cortex 从平台信号中归一化计算，屏蔽平台细节。
-   * direct  — 明确呼唤月见（唤醒词、@、私聊）；Soul 预期给出回复
+   * 寻址模式：由适配器归一化层从平台信号中计算，屏蔽平台细节。
+   * direct  — 明确呼唤月见（唤醒词、@、私聊）；AI Core 预期给出回复
    * ambient — 焦点窗口内的环境感知；月见可自主选择是否开口
    */
   address_mode: 'direct' | 'ambient';

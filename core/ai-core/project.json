@@ -1,0 +1,14 @@
+{
+  "name": "ai-core",
+  "root": "core/ai-core",
+  "sourceRoot": "core/ai-core/src",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python -m pytest -q"
+      }
+    }
+  }
+}

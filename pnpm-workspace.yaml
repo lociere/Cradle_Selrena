@@ -1,15 +1,10 @@
 packages:
   - 'core/**'
-  - 'protocol/**'
-  - 'packages/**'
-  - 'packages/*/**'
-  - 'packages/@cradle-selrena/**'
-  - 'assets/**'
-  - 'scripts/**'
-  - 'plugins/_sdk'
-  - 'plugins/vessel-napcat'
-  - 'plugins/_template'
-  - 'plugins/vessel-vtube-studio'
+  - 'protocol'
+  - 'extensions/internal/sdk'
+  - 'extensions/internal/template'
+  - 'extensions/adapters/napcat-adapter'
+  - 'extensions/adapters/vtube-studio-adapter'
 
 allowBuilds:
   '@bufbuild/buf': true

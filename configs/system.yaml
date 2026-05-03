@@ -53,27 +53,27 @@ lifecycle:
     - persistence
     - ipc
     - python_ai
-    - plugins
+    - extensions
     - life_clock
   module_stop_order:                   # 模块停止顺序（通常为启动的逆序）
     - life_clock
-    - plugins
+    - extensions
     - python_ai
     - ipc
     - persistence
     - config
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  plugin — 插件系统
+#  extension — 扩展系统
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-plugin:
-  plugin_root_dir: "plugins"           # 插件根目录（相对项目根）
+extension:
+  extension_root_dir: "extensions"     # 扩展根目录（相对项目根）
   sandbox:
-    enable_isolation: true             # 是否启用插件沙箱隔离
+    enable_isolation: true             # 是否启用扩展沙箱隔离
     timeout_ms: 5000                   # onActivate / onDeactivate 超时（ms）
     allow_native_modules: false        # 是否允许加载 native 模块
-  default_permissions:                 # 新插件默认权限
+  default_permissions:                 # 新扩展默认权限
     - CHAT_SEND
     - MEMORY_READ
     - MEMORY_WRITE
@@ -81,7 +81,43 @@ plugin:
     - CONFIG_WRITE_SELF
     - CONFIG_READ_GLOBAL
     - EVENT_SUBSCRIBE
-  plugin_blacklist: []                 # 插件黑名单（阻止加载的插件 ID）
+  extension_blacklist: []              # 扩展黑名单（阻止加载的扩展 ID）
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  renderer — 桌面壳 / 头像壳桥接
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+renderer:
+  avatar_shell:
+    enabled: true
+    port: 8082
+    heartbeat_interval_ms: 10000
+    heartbeat_timeout_ms: 30000
+    emotion_mapping:
+      happy:
+        expression_id: "happy"
+        motion_group: "happy"
+        animator_trigger: "happy"
+      sad:
+        expression_id: "sad"
+        motion_group: "sad"
+        animator_trigger: "sad"
+      angry:
+        expression_id: "angry"
+        motion_group: "angry"
+        animator_trigger: "angry"
+      surprised:
+        expression_id: "surprised"
+        motion_group: "surprised"
+        animator_trigger: "surprised"
+      neutral:
+        expression_id: "neutral"
+        motion_group: "idle"
+        animator_trigger: "idle"
+  desktop_shell:
+    enabled: true
+    port: 8083
+    avatar_status_interval_ms: 1500
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  ingress_gate — 入站防护（速率限制 · 熔断 · 就绪守卫）

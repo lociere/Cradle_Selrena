@@ -297,41 +297,80 @@ export const LifecycleConfigSchema = z.object({
   stop_timeout_ms: z.number().int().min(1000).default(30000),
   /** 模块启动顺序（按数组顺序依次启动） */
   module_start_order: z.array(z.string()).default([
-    "config", "persistence", "ipc", "python_ai", "plugins", "life_clock",
+    "config", "persistence", "ipc", "python_ai", "extensions", "life_clock",
   ]),
   /** 模块停止顺序（按数组顺序依次停止） */
   module_stop_order: z.array(z.string()).default([
-    "life_clock", "plugins", "python_ai", "ipc", "persistence", "config",
+    "life_clock", "extensions", "python_ai", "ipc", "persistence", "config",
   ]),
 });
 export type LifecycleConfig = z.infer<typeof LifecycleConfigSchema>;
 
-/** 插件沙箱配置 */
-const PluginSandboxSchema = z.object({
-  /** 是否启用插件隔离 */
+/** 扩展沙箱配置 */
+const ExtensionSandboxSchema = z.object({
+  /** 是否启用扩展隔离 */
   enable_isolation: z.boolean().default(true),
-  /** 插件 onActivate / onDeactivate 超时（ms） */
+  /** 扩展 onActivate / onDeactivate 超时（ms） */
   timeout_ms: z.number().int().min(0).default(5000),
-  /** 是否允许插件加载 native 模块 */
+  /** 是否允许扩展加载 native 模块 */
   allow_native_modules: z.boolean().default(false),
 });
 
-/** 插件系统配置 */
-export const PluginConfigSchema = z.object({
-  /** 插件根目录（相对项目根） */
-  plugin_root_dir: z.string().default("plugins"),
+/** 扩展系统配置 */
+export const ExtensionConfigSchema = z.object({
+  /** 扩展根目录（相对项目根） */
+  extension_root_dir: z.string().default("extensions"),
   /** 沙箱策略 */
-  sandbox: PluginSandboxSchema.default({}),
-  /** 新插件默认获得的权限列表 */
+  sandbox: ExtensionSandboxSchema.default({}),
+  /** 新扩展默认获得的权限列表 */
   default_permissions: z.array(z.string()).default([
     "CHAT_SEND", "MEMORY_READ", "MEMORY_WRITE",
     "CONFIG_READ_SELF", "CONFIG_WRITE_SELF", "CONFIG_READ_GLOBAL",
     "EVENT_SUBSCRIBE",
   ]),
-  /** 插件黑名单（ID 列表，阻止加载） */
-  plugin_blacklist: z.array(z.string()).default([]),
+  /** 扩展黑名单（ID 列表，阻止加载） */
+  extension_blacklist: z.array(z.string()).default([]),
 });
-export type PluginConfig = z.infer<typeof PluginConfigSchema>;
+export type ExtensionConfig = z.infer<typeof ExtensionConfigSchema>;
+
+/** Avatar Shell 情绪映射 */
+export const AvatarEmotionMappingSchema = z.object({
+  expression_id: z.string().optional(),
+  motion_group: z.string().optional(),
+  animator_trigger: z.string().optional(),
+});
+export type AvatarEmotionMapping = z.infer<typeof AvatarEmotionMappingSchema>;
+
+/** Avatar Shell 运行时桥接配置 */
+export const AvatarShellRuntimeConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  port: z.number().int().min(1).max(65535).default(8082),
+  heartbeat_interval_ms: z.number().int().min(1000).default(10000),
+  heartbeat_timeout_ms: z.number().int().min(1000).default(30000),
+  emotion_mapping: z.record(z.string(), AvatarEmotionMappingSchema).default({
+    happy: { expression_id: "happy", motion_group: "happy", animator_trigger: "happy" },
+    sad: { expression_id: "sad", motion_group: "sad", animator_trigger: "sad" },
+    angry: { expression_id: "angry", motion_group: "angry", animator_trigger: "angry" },
+    surprised: { expression_id: "surprised", motion_group: "surprised", animator_trigger: "surprised" },
+    neutral: { expression_id: "neutral", motion_group: "idle", animator_trigger: "idle" },
+  }),
+});
+export type AvatarShellRuntimeConfig = z.infer<typeof AvatarShellRuntimeConfigSchema>;
+
+/** Desktop Shell 运行时桥接配置 */
+export const DesktopShellRuntimeConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  port: z.number().int().min(1).max(65535).default(8083),
+  avatar_status_interval_ms: z.number().int().min(250).default(1500),
+});
+export type DesktopShellRuntimeConfig = z.infer<typeof DesktopShellRuntimeConfigSchema>;
+
+/** 原生渲染桥接配置 */
+export const RendererRuntimeConfigSchema = z.object({
+  avatar_shell: AvatarShellRuntimeConfigSchema.default({}),
+  desktop_shell: DesktopShellRuntimeConfigSchema.default({}),
+});
+export type RendererRuntimeConfig = z.infer<typeof RendererRuntimeConfigSchema>;
 
 /** 入站防护配置（速率限制 · 熔断 · 就绪守卫） */
 export const IngressGateConfigSchema = z.object({
@@ -354,8 +393,10 @@ export const KernelConfigSchema = z.object({
   ipc: IPCConfigSchema.default({}),
   /** 模块生命周期 */
   lifecycle: LifecycleConfigSchema.default({}),
-  /** 插件系统 */
-  plugin: PluginConfigSchema.default({}),
+  /** 扩展系统 */
+  extension: ExtensionConfigSchema.default({}),
+  /** 桌面壳 / 头像壳桥接配置 */
+  renderer: RendererRuntimeConfigSchema.default({}),
   /** 入站防护（速率限制 · 熔断 · 就绪守卫） */
   ingress_gate: IngressGateConfigSchema.default({}),
 });

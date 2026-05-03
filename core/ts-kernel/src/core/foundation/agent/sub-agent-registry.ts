@@ -1,14 +1,14 @@
-import { SubAgentProfile } from '@cradle-selrena/protocol';
+﻿import { SubAgentProfile } from '@cradle-selrena/protocol';
 
 export interface RegisteredAgent {
-  pluginId: string;
+  extensionId: string;
   profile: SubAgentProfile;
 }
 
 /**
- * Sub-Agent 全局注册表。
- * 插件通过 ctx.agents.registerSubAgent() 将 SubAgentProfile 写入此处，
- * Python AI 层（通过 IPC）或 TS 调度器可从此处获取可用 Agent 清单。
+ * Sub-Agent 鍏ㄥ眬娉ㄥ唽琛ㄣ€?
+ * 鎻掍欢閫氳繃 ctx.agents.registerSubAgent() 灏?SubAgentProfile 鍐欏叆姝ゅ锛?
+ * Python AI 灞傦紙閫氳繃 IPC锛夋垨 TS 璋冨害鍣ㄥ彲浠庢澶勮幏鍙栧彲鐢?Agent 娓呭崟銆?
  */
 export class SubAgentRegistry {
   private static _instance: SubAgentRegistry | null = null;
@@ -23,24 +23,25 @@ export class SubAgentRegistry {
 
   private constructor() {}
 
-  public register(pluginId: string, profile: SubAgentProfile): void {
-    const key = `${pluginId}:${profile.name}`;
-    this._agents.set(key, { pluginId, profile });
+  public register(extensionId: string, profile: SubAgentProfile): void {
+    const key = `${extensionId}:${profile.name}`;
+    this._agents.set(key, { extensionId, profile });
   }
 
-  public unregister(pluginId: string, agentName: string): void {
-    this._agents.delete(`${pluginId}:${agentName}`);
+  public unregister(extensionId: string, agentName: string): void {
+    this._agents.delete(`${extensionId}:${agentName}`);
   }
 
   public getAll(): RegisteredAgent[] {
     return Array.from(this._agents.values());
   }
 
-  public getByPlugin(pluginId: string): RegisteredAgent[] {
-    return this.getAll().filter((a) => a.pluginId === pluginId);
+  public getByExtension(extensionId: string): RegisteredAgent[] {
+    return this.getAll().filter((a) => a.extensionId === extensionId);
   }
 
   public findByName(agentName: string): RegisteredAgent | undefined {
     return this.getAll().find((a) => a.profile.name === agentName);
   }
 }
+

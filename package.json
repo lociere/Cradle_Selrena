@@ -11,8 +11,8 @@
   "scripts": {
     "bootstrap": "pnpm install",
     "build": "pnpm run build:all",
-    "build:all": "pnpm --filter @cradle-selrena/protocol run lint && pnpm run build:plugins && pnpm --filter @cradle-selrena/kernel run build && pnpm --filter @cradle-selrena/renderer-ui run build && pnpm --filter @cradle-selrena/renderer-avatar run build",
-    "build:plugins": "pnpm --filter @cradle-selrena/plugin-sdk run build && pnpm --filter @cradle-selrena/plugin-vessel-napcat run build && pnpm --filter @cradle-selrena/plugin-vessel-vtube-studio run build && pnpm --filter @cradle-selrena/plugin-template run build",
+    "build:all": "pnpm --filter @cradle-selrena/protocol run lint && pnpm run build:extensions && pnpm --filter @cradle-selrena/kernel run build && pnpm --filter @cradle-selrena/renderer-ui run build && pnpm --filter @cradle-selrena/renderer-avatar run build",
+    "build:extensions": "pnpm --filter @cradle-selrena/extension-sdk run build && pnpm --filter @cradle-selrena/extension-napcat-adapter run build && pnpm --filter @cradle-selrena/extension-vtube-studio-adapter run build && pnpm --filter @cradle-selrena/extension-template run build",
     "dev": "pnpm -w run dev:all",
     "dev:all": "concurrently \"pnpm --filter @cradle-selrena/kernel dev\" \"pnpm --filter @cradle-selrena/renderer-ui dev\" \"pnpm --filter @cradle-selrena/renderer-avatar start\"",
     "dev:shells": "concurrently \"pnpm --filter @cradle-selrena/renderer-ui dev\" \"pnpm --filter @cradle-selrena/renderer-avatar start\"",

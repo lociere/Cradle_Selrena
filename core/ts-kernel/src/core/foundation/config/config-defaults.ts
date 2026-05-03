@@ -1,53 +1,53 @@
-/**
- * 默认配置模板
- * 用于首次运行或命令行工具生成完整的带注释 YAML 配置文件。
+﻿/**
+ * 榛樿閰嶇疆妯℃澘
+ * 鐢ㄤ簬棣栨杩愯鎴栧懡浠よ宸ュ叿鐢熸垚瀹屾暣鐨勫甫娉ㄩ噴 YAML 閰嶇疆鏂囦欢銆?
  *
- * 调用入口：ConfigManager.generateDefaults()
+ * 璋冪敤鍏ュ彛锛欳onfigManager.generateDefaults()
  */
 
-/** system.yaml — 系统级配置（合并原 app + kernel） */
-export const SYSTEM_YAML_TEMPLATE = `# ╔════════════════════════════════════════════════════════════╗
-# ║  Cradle Selrena — 系统配置 (system.yaml)                  ║
-# ║  端口号 / IPC 通信 / 日志级别 / 模块生命周期 / 插件沙箱    ║
-# ╚════════════════════════════════════════════════════════════╝
+/** system.yaml 鈥?绯荤粺绾ч厤缃紙鍚堝苟鍘?app + kernel锛?*/
+export const SYSTEM_YAML_TEMPLATE = `# 鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽
+# 鈺? Cradle Selrena 鈥?绯荤粺閰嶇疆 (system.yaml)                  鈺?
+# 鈺? 绔彛鍙?/ IPC 閫氫俊 / 鏃ュ織绾у埆 / 妯″潡鐢熷懡鍛ㄦ湡 / 鎻掍欢娌欑    鈺?
+# 鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆
 
-# 应用显示名称
+# 搴旂敤鏄剧ず鍚嶇О
 app_name: "Cradle Selrena"
 
-# 语义化版本号（仅展示，不影响运行行为）
+# 璇箟鍖栫増鏈彿锛堜粎灞曠ず锛屼笉褰卞搷杩愯琛屼负锛?
 app_version: "0.1.0"
 
-# 全局日志级别：debug | info | warn | error
+# 鍏ㄥ眬鏃ュ織绾у埆锛歞ebug | info | warn | error
 log_level: "debug"
 
-# ── 目录路径（均相对于项目根目录） ────────────────────────────
+# 鈹€鈹€ 鐩綍璺緞锛堝潎鐩稿浜庨」鐩牴鐩綍锛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-# 持久化数据目录（数据库、记忆等）
+# 鎸佷箙鍖栨暟鎹洰褰曪紙鏁版嵁搴撱€佽蹇嗙瓑锛?
 data_dir: "data"
 
-# 日志输出目录
+# 鏃ュ織杈撳嚭鐩綍
 log_dir: "logs"
 
-# 自动备份存放目录
+# 鑷姩澶囦唤瀛樻斁鐩綍
 backup_dir: "data/backup"
 
-# 自动备份间隔（小时），0 = 不备份
+# 鑷姩澶囦唤闂撮殧锛堝皬鏃讹級锛? = 涓嶅浠?
 auto_backup_interval_hours: 24
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  ipc — TS ↔ Python 进程间通信
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  ipc 鈥?TS 鈫?Python 杩涚▼闂撮€氫俊
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
 ipc:
-  bind_address: "tcp://127.0.0.1:8765" # ZMQ 绑定地址
-  request_timeout_ms: 30000            # 单次请求超时（ms）
-  retry_count: 2                       # 请求失败重试次数
-  retry_interval_ms: 2000              # 重试间隔（ms）
-  heartbeat_interval_ms: 5000          # Python 心跳检测间隔（ms）
+  bind_address: "tcp://127.0.0.1:8765" # ZMQ 缁戝畾鍦板潃
+  request_timeout_ms: 30000            # 鍗曟璇锋眰瓒呮椂锛坢s锛?
+  retry_count: 2                       # 璇锋眰澶辫触閲嶈瘯娆℃暟
+  retry_interval_ms: 2000              # 閲嶈瘯闂撮殧锛坢s锛?
+  heartbeat_interval_ms: 5000          # Python 蹇冭烦妫€娴嬮棿闅旓紙ms锛?
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  lifecycle — 模块启停顺序
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  lifecycle 鈥?妯″潡鍚仠椤哄簭
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
 lifecycle:
   start_timeout_ms: 30000
@@ -57,22 +57,22 @@ lifecycle:
     - persistence
     - ipc
     - python_ai
-    - plugins
+    - extensions
     - life_clock
   module_stop_order:
     - life_clock
-    - plugins
+    - extensions
     - python_ai
     - ipc
     - persistence
     - config
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  plugin — 插件系统
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  extension - 扩展系统
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
-plugin:
-  plugin_root_dir: "plugins"
+extension:
+  extension_root_dir: "extensions"
   sandbox:
     enable_isolation: true
     timeout_ms: 5000
@@ -85,110 +85,110 @@ plugin:
     - CONFIG_WRITE_SELF
     - CONFIG_READ_GLOBAL
     - EVENT_SUBSCRIBE
-  plugin_blacklist: []
+  extension_blacklist: []
 `;
 
-/** persona.yaml — 角色人格与 AI 层配置 */
-export const PERSONA_YAML_TEMPLATE = `# ╔════════════════════════════════════════════════════════════╗
-# ║  Cradle Selrena — 人设配置 (persona.yaml)                 ║
-# ║  包含人格定义 / 推理参数 / LLM 提供商配置                  ║
-# ║  ⚠ 本文件结构为 TS↔Python IPC 契约，请勿随意变更层级       ║
-# ╚════════════════════════════════════════════════════════════╝
+/** persona.yaml 鈥?瑙掕壊浜烘牸涓?AI 灞傞厤缃?*/
+export const PERSONA_YAML_TEMPLATE = `# 鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽
+# 鈺? Cradle Selrena 鈥?浜鸿閰嶇疆 (persona.yaml)                 鈺?
+# 鈺? 鍖呭惈浜烘牸瀹氫箟 / 鎺ㄧ悊鍙傛暟 / LLM 鎻愪緵鍟嗛厤缃?                 鈺?
+# 鈺? 鈿?鏈枃浠剁粨鏋勪负 TS鈫擯ython IPC 濂戠害锛岃鍕块殢鎰忓彉鏇村眰绾?      鈺?
+# 鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  persona — 角色人格定义
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  persona 鈥?瑙掕壊浜烘牸瀹氫箟
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
 persona:
-  # ── 基础档案 ─────────────────────────────────────────────────────────────
-  # 只保留最小身份锚定，性格/外观/风格等人格血肉完全由 knowledge-base.json 承载
+  # 鈹€鈹€ 鍩虹妗ｆ 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  # 鍙繚鐣欐渶灏忚韩浠介敋瀹氾紝鎬ф牸/澶栬/椋庢牸绛変汉鏍艰鑲夊畬鍏ㄧ敱 knowledge-base.json 鎵胯浇
   base:
-    name: "Selrena"                    # 角色正式名（英文）
-    nickname: "月见"                   # 角色昵称（中文）
+    name: "Selrena"                    # 瑙掕壊姝ｅ紡鍚嶏紙鑻辨枃锛?
+    nickname: "鏈堣"                   # 瑙掕壊鏄电О锛堜腑鏂囷級
 
-  # ── 人格模式 ─────────────────────────────────────────────────────────────
-  # api          → 知识库提供所有风格引导 + minimal 提示词锚定
-  # local_base   → 同 api（使用本地基础模型，无专项微调）
-  # local_finetune → 说话风格已烘焙到权重，跳过人设知识库检索，使用极简提示词
+  # 鈹€鈹€ 浜烘牸妯″紡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  # api          鈫?鐭ヨ瘑搴撴彁渚涙墍鏈夐鏍煎紩瀵?+ minimal 鎻愮ず璇嶉敋瀹?
+  # local_base   鈫?鍚?api锛堜娇鐢ㄦ湰鍦板熀纭€妯″瀷锛屾棤涓撻」寰皟锛?
+  # local_finetune 鈫?璇磋瘽椋庢牸宸茬儤鐒欏埌鏉冮噸锛岃烦杩囦汉璁剧煡璇嗗簱妫€绱紝浣跨敤鏋佺畝鎻愮ず璇?
   persona_mode: "api"
 
-  # ── 安全策略 ──────────────────────────────────────────────
+  # 鈹€鈹€ 瀹夊叏绛栫暐 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   safety:
-    taboos: ""                         # 禁忌规则（自由文本）
-    forbidden_phrases: []              # 严格禁止出现的短语
-    forbidden_regex: []                # 禁止匹配的正则表达式
+    taboos: ""                         # 绂佸繉瑙勫垯锛堣嚜鐢辨枃鏈級
+    forbidden_phrases: []              # 涓ユ牸绂佹鍑虹幇鐨勭煭璇?
+    forbidden_regex: []                # 绂佹鍖归厤鐨勬鍒欒〃杈惧紡
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  inference — 推理引擎参数
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  inference 鈥?鎺ㄧ悊寮曟搸鍙傛暟
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
 inference:
-  # ── 模型参数 ──────────────────────────────────────────────
+  # 鈹€鈹€ 妯″瀷鍙傛暟 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   model:
-    local_model_path: ""               # 本地模型路径（仅 api_type=local 时生效）
-    max_tokens: 1024                   # 单次生成最大 token 数
-    temperature: 0.8                   # 采样温度（0=确定性 ~ 2=最大随机）
-    top_p: 0.9                         # 核采样概率阈值
-    frequency_penalty: 0.0             # 频率惩罚因子（-2 ~ 2）
+    local_model_path: ""               # 鏈湴妯″瀷璺緞锛堜粎 api_type=local 鏃剁敓鏁堬級
+    max_tokens: 1024                   # 鍗曟鐢熸垚鏈€澶?token 鏁?
+    temperature: 0.8                   # 閲囨牱娓╁害锛?=纭畾鎬?~ 2=鏈€澶ч殢鏈猴級
+    top_p: 0.9                         # 鏍搁噰鏍锋鐜囬槇鍊?
+    frequency_penalty: 0.0             # 棰戠巼鎯╃綒鍥犲瓙锛?2 ~ 2锛?
 
-  # ── 生命时钟 / 注意力管理 ─────────────────────────────────
+  # 鈹€鈹€ 鐢熷懡鏃堕挓 / 娉ㄦ剰鍔涚鐞?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   life_clock:
-    focused_interval_ms: 10000         # 焦点模式心跳间隔（ms）
-    ambient_interval_ms: 45000         # 环境模式心跳间隔（ms）
-    default_mode: "standby"            # 启动时默认模式：standby | ambient | focused
-    focus_duration_ms: 20000           # 焦点超时时长（ms），超时后回落到默认模式
-    ingress_debounce_ms: 1400          # 普通消息防抖窗口（ms）
-    ingress_focused_debounce_ms: 700   # 焦点模式防抖窗口（ms）
-    ingress_max_batch_messages: 4      # 单批次最大消息条数
-    ingress_max_batch_items: 24        # 单批次最大媒体项数
-    summon_keywords:                   # 唤醒关键词列表
-      - "月见"
+    focused_interval_ms: 10000         # 鐒︾偣妯″紡蹇冭烦闂撮殧锛坢s锛?
+    ambient_interval_ms: 45000         # 鐜妯″紡蹇冭烦闂撮殧锛坢s锛?
+    default_mode: "standby"            # 鍚姩鏃堕粯璁ゆā寮忥細standby | ambient | focused
+    focus_duration_ms: 20000           # 鐒︾偣瓒呮椂鏃堕暱锛坢s锛夛紝瓒呮椂鍚庡洖钀藉埌榛樿妯″紡
+    ingress_debounce_ms: 1400          # 鏅€氭秷鎭槻鎶栫獥鍙ｏ紙ms锛?
+    ingress_focused_debounce_ms: 700   # 鐒︾偣妯″紡闃叉姈绐楀彛锛坢s锛?
+    ingress_max_batch_messages: 4      # 鍗曟壒娆℃渶澶ф秷鎭潯鏁?
+    ingress_max_batch_items: 24        # 鍗曟壒娆℃渶澶у獟浣撻」鏁?
+    summon_keywords:                   # 鍞ら啋鍏抽敭璇嶅垪琛?
+      - "鏈堣"
       - "selrena"
-    focus_on_any_chat: false           # true = 任意消息都触发焦点（无需唤醒词）
-    active_thought_modes: []           # 允许主动思维的模式列表（空 = 禁用）
-    # 注意：来源类型的注意力策略（source_focus_policies）由各 Vessel 插件自行注册，不在此处配置
+    focus_on_any_chat: false           # true = 浠绘剰娑堟伅閮借Е鍙戠劍鐐癸紙鏃犻渶鍞ら啋璇嶏級
+    active_thought_modes: []           # 鍏佽涓诲姩鎬濈淮鐨勬ā寮忓垪琛紙绌?= 绂佺敤锛?
+    # 娉ㄦ剰锛氭潵婧愮被鍨嬬殑娉ㄦ剰鍔涚瓥鐣ワ紙source_focus_policies锛夌敱鍚?Vessel 鎻掍欢鑷娉ㄥ唽锛屼笉鍦ㄦ澶勯厤缃?
 
-  # ── 对话记忆规则 ──────────────────────────────────────────
+  # 鈹€鈹€ 瀵硅瘽璁板繂瑙勫垯 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   memory:
-    max_recall_count: 5                # 单次检索最大记忆条数
-    retention_days: 30                 # 记忆保留天数
-    context_limit: 6                   # 提示词中携带的历史条数上限
-    conversation_window: 12            # 触发摘要前的最大对话轮数
-    summary_trigger_count: 18          # 触发自动摘要的消息条数
-    summary_keep_recent_count: 6       # 摘要时保留的最近消息数
-    summary_max_chars: 2400            # 摘要文本最大字符数
+    max_recall_count: 5                # 鍗曟妫€绱㈡渶澶ц蹇嗘潯鏁?
+    retention_days: 30                 # 璁板繂淇濈暀澶╂暟
+    context_limit: 6                   # 鎻愮ず璇嶄腑鎼哄甫鐨勫巻鍙叉潯鏁颁笂闄?
+    conversation_window: 12            # 瑙﹀彂鎽樿鍓嶇殑鏈€澶у璇濊疆鏁?
+    summary_trigger_count: 18          # 瑙﹀彂鑷姩鎽樿鐨勬秷鎭潯鏁?
+    summary_keep_recent_count: 6       # 鎽樿鏃朵繚鐣欑殑鏈€杩戞秷鎭暟
+    summary_max_chars: 2400            # 鎽樿鏂囨湰鏈€澶у瓧绗︽暟
 
-  # ── 多模态处理 ──────────────────────────────────────────
+  # 鈹€鈹€ 澶氭ā鎬佸鐞?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   multimodal:
-    enabled: false                     # 是否启用多模态输入
+    enabled: false                     # 鏄惁鍚敤澶氭ā鎬佽緭鍏?
     strategy: "specialist_then_core"   # core_direct | specialist_then_core
-    max_items: 6                       # 单次最大媒体项
-    core_model: "deepseek/chat"        # 主推理模型（provider/alias 格式）
-    image_model: ""                    # 图像专家模型（如 qwen/vision）
-    video_model: ""                    # 视频专家模型
+    max_items: 6                       # 鍗曟鏈€澶у獟浣撻」
+    core_model: "deepseek/chat"        # 涓绘帹鐞嗘ā鍨嬶紙provider/alias 鏍煎紡锛?
+    image_model: ""                    # 鍥惧儚涓撳妯″瀷锛堝 qwen/vision锛?
+    video_model: ""                    # 瑙嗛涓撳妯″瀷
 
-  # ── 动作流（Live2D 联动） ─────────────────────────────────
+  # 鈹€鈹€ 鍔ㄤ綔娴侊紙Live2D 鑱斿姩锛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   action_stream:
-    enabled: false                     # 是否启用动作流
-    channel: "live2d"                  # 渲染通道
+    enabled: false                     # 鏄惁鍚敤鍔ㄤ綔娴?
+    channel: "live2d"                  # 娓叉煋閫氶亾
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  llm — LLM 提供商配置
-#  API Key 优先从 secret/secrets.yaml 自动注入，此处可留空
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
+#  llm 鈥?LLM 鎻愪緵鍟嗛厤缃?
+#  API Key 浼樺厛浠?secret/secrets.yaml 鑷姩娉ㄥ叆锛屾澶勫彲鐣欑┖
+# 鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣
 
 llm:
-  api_type: "deepseek"                 # 主 API 协议：openai | azure | anthropic | deepseek | local
-  base_url: "https://api.deepseek.com" # 主 API 端点
-  temperature: 0.7                     # 主采样温度
-  # api_key: ""                        # 留空，由 secrets.yaml 注入
+  api_type: "deepseek"                 # 涓?API 鍗忚锛歰penai | azure | anthropic | deepseek | local
+  base_url: "https://api.deepseek.com" # 涓?API 绔偣
+  temperature: 0.7                     # 涓婚噰鏍锋俯搴?
+  # api_key: ""                        # 鐣欑┖锛岀敱 secrets.yaml 娉ㄥ叆
   models:
-    chat: "deepseek-chat"              # 默认模型（provider_key=None 时使用）
+    chat: "deepseek-chat"              # 榛樿妯″瀷锛坧rovider_key=None 鏃朵娇鐢級
 
-  # 多提供商配置（按需添加）
-  # provider_key 格式：
-  #   "deepseek"      → providers.deepseek.models 第一个模型
-  #   "deepseek/chat" → providers.deepseek.models.chat
+  # 澶氭彁渚涘晢閰嶇疆锛堟寜闇€娣诲姞锛?
+  # provider_key 鏍煎紡锛?
+  #   "deepseek"      鈫?providers.deepseek.models 绗竴涓ā鍨?
+  #   "deepseek/chat" 鈫?providers.deepseek.models.chat
   # providers:
   #   deepseek:
   #     api_type: "deepseek"
@@ -205,13 +205,13 @@ llm:
   #       vision: "qwen-vl-max"
 `;
 
-/** secret/secrets.example.yaml — 敏感信息示例文件 */
-export const SECRETS_EXAMPLE_YAML_TEMPLATE = `# ╔════════════════════════════════════════════════════════════╗
-# ║  敏感信息配置（请勿提交到版本控制）                        ║
-# ║  复制本文件为 secrets.yaml 并填入真实凭据                  ║
-# ╚════════════════════════════════════════════════════════════╝
+/** secret/secrets.example.yaml 鈥?鏁忔劅淇℃伅绀轰緥鏂囦欢 */
+export const SECRETS_EXAMPLE_YAML_TEMPLATE = `# 鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽
+# 鈺? 鏁忔劅淇℃伅閰嶇疆锛堣鍕挎彁浜ゅ埌鐗堟湰鎺у埗锛?                       鈺?
+# 鈺? 澶嶅埗鏈枃浠朵负 secrets.yaml 骞跺～鍏ョ湡瀹炲嚟鎹?                 鈺?
+# 鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆
 
-# LLM API Key（按提供商名称自动注入到 persona.yaml 中）
+# LLM API Key锛堟寜鎻愪緵鍟嗗悕绉拌嚜鍔ㄦ敞鍏ュ埌 persona.yaml 涓級
 providers:
   deepseek:
     api_key: "sk-..."
@@ -220,12 +220,13 @@ providers:
   openai:
     api_key: "sk-..."
 
-# NapCat 适配器凭据
+# NapCat 閫傞厤鍣ㄥ嚟鎹?
 napcat:
   token: ""
 `;
 
-/** active-plugins.yaml — 启用的插件列表 */
-export const ENABLED_PLUGINS_YAML_TEMPLATE = `# 启用的插件列表（按数组顺序加载）
-enabled_plugins: []
+/** active-extensions.yaml - 启用的扩展列表 */
+export const ENABLED_EXTENSIONS_YAML_TEMPLATE = `# 启用的扩展列表（按数组顺序加载）
+enabled_extensions: []
 `;
+

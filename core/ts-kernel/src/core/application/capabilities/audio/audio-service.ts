@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process';
+import process from 'node:process';
+import { promisify } from 'node:util';
 import path from "path";
 import { promises as fs } from "fs";
 import {
@@ -10,6 +13,7 @@ import { getLogger } from "../../../foundation/logger/logger";
 import { resolveRepoRoot } from "../../../foundation/utils/path-utils";
 
 const logger = getLogger("audio-service");
+const execFileAsync = promisify(execFile);
 
 export class AudioService {
   private static _instance: AudioService | null = null;
@@ -33,11 +37,25 @@ export class AudioService {
       const outputPath = await this.resolveOutputPath(request.output_path);
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
-      // 先落可播放的静音 wav 占位文件，确保链路可运行；后续可替换为真实 native TTS。
-      const wavBuffer = this.createSilentWav(320);
-      await fs.writeFile(outputPath, wavBuffer);
+      let provider = 'fallback-wav';
+      try {
+        const systemProvider = await this.trySynthesizeWithSystemVoice(text, outputPath);
+        if (systemProvider) {
+          provider = systemProvider;
+        } else {
+          await fs.writeFile(outputPath, this.createFallbackWav(320));
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn('系统 TTS 不可用，已切换为回退音频', { error: message, output_path: outputPath });
+        await fs.writeFile(outputPath, this.createFallbackWav(320));
+      }
 
-      logger.info("TTS 合成完成（占位实现）", { output_path: outputPath, text_length: text.length });
+      logger.info('TTS 合成完成', {
+        output_path: outputPath,
+        text_length: text.length,
+        provider,
+      });
       return { status: "success", output_path: outputPath };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -63,8 +81,16 @@ export class AudioService {
       await fs.access(resolvedPath);
 
       const filename = path.basename(resolvedPath);
-      logger.info("ASR 识别完成（占位实现）", { audio_path: resolvedPath });
-      return { status: "success", text: `[语音转写占位] ${filename}` };
+      const fallbackText = path.parse(filename).name || filename;
+      logger.warn('ASR 引擎未接入，返回文件名回退结果', {
+        audio_path: resolvedPath,
+        fallback_text: fallbackText,
+      });
+      return {
+        status: 'success',
+        text: fallbackText,
+        message: 'ASR engine unavailable, returned filename fallback',
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error("ASR 识别失败", { audio_path: inputPath, error: message });
@@ -84,7 +110,48 @@ export class AudioService {
     return path.join(dir, filename);
   }
 
-  private createSilentWav(durationMs: number): Buffer {
+  private async trySynthesizeWithSystemVoice(text: string, outputPath: string): Promise<string | null> {
+    if (process.platform !== 'win32') {
+      return null;
+    }
+
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      'Add-Type -AssemblyName System.Speech',
+      "$text = [Environment]::GetEnvironmentVariable('SELRENA_TTS_TEXT')",
+      "$outputPath = [Environment]::GetEnvironmentVariable('SELRENA_TTS_OUTPUT')",
+      "if ([string]::IsNullOrWhiteSpace($text)) { throw 'SELRENA_TTS_TEXT is empty' }",
+      "if ([string]::IsNullOrWhiteSpace($outputPath)) { throw 'SELRENA_TTS_OUTPUT is empty' }",
+      '$directory = Split-Path -Parent $outputPath',
+      'if ($directory) { [System.IO.Directory]::CreateDirectory($directory) | Out-Null }',
+      '$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer',
+      'try {',
+      '  $synth.SetOutputToWaveFile($outputPath)',
+      '  $synth.Speak($text)',
+      '} finally {',
+      '  $synth.Dispose()',
+      '}',
+    ].join('; ');
+    const encodedCommand = Buffer.from(script, 'utf16le').toString('base64');
+
+    await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand],
+      {
+        env: {
+          ...process.env,
+          SELRENA_TTS_TEXT: text,
+          SELRENA_TTS_OUTPUT: outputPath,
+        },
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+
+    return 'windows-sapi';
+  }
+
+  private createFallbackWav(durationMs: number): Buffer {
     const sampleRate = 16000;
     const channels = 1;
     const bitsPerSample = 16;

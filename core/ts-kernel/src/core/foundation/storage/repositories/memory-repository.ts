@@ -240,7 +240,8 @@ export class MemoryRepository {
           weight=excluded.weight,
           tags=excluded.tags,
           scene_id=excluded.scene_id,
-          timestamp=excluded.timestamp
+          timestamp=excluded.timestamp,
+          updated_at=CURRENT_TIMESTAMP
       `);
 
       stmt.run(

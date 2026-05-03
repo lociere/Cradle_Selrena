@@ -1,0 +1,26 @@
+{
+  "name": "renderer-ui",
+  "root": "core/renderer/ui",
+  "sourceRoot": "core/renderer/ui/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/renderer-ui run build"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/renderer-ui run dev"
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm --filter @cradle-selrena/renderer-ui run start"
+      }
+    }
+  }
+}

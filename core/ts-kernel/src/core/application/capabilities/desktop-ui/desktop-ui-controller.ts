@@ -3,7 +3,8 @@ import { EventBus } from '../../../foundation/event-bus/event-bus.js';
 import { getLogger } from '../../../foundation/logger/logger.js';
 import { PerceptionAppService } from '../../services/perception-app.service.js';
 import { AvatarEngineController } from '../avatar-engine/avatar-engine-controller.js';
-import { PerceptionEvent, ChannelReplyEvent } from '@cradle-selrena/protocol';  
+import { PerceptionEvent, ChannelReplyEvent } from '@cradle-selrena/protocol';
+import type { DesktopShellRuntimeConfig } from '@cradle-selrena/protocol';
 
 const logger = getLogger('desktop-ui-engine');
 
@@ -15,6 +16,7 @@ export class DesktopUIController {
   private _perceptionAppService: PerceptionAppService | null = null;
   private _avatarStatusInterval: ReturnType<typeof setInterval> | null = null;
   private _lastAvatarShellKind: 'placeholder-puppet' | 'unity-shell' = 'placeholder-puppet';
+  private _avatarStatusIntervalMs = 1500;
 
   public static get instance(): DesktopUIController {
     if (!DesktopUIController._instance) {
@@ -25,12 +27,13 @@ export class DesktopUIController {
 
   private constructor() {}
 
-  public init(perceptionAppService: PerceptionAppService, port: number = 8083): void {
+  public init(perceptionAppService: PerceptionAppService, config: DesktopShellRuntimeConfig): void {
     if (this._initialized) return;
 
     this._perceptionAppService = perceptionAppService;
+    this._avatarStatusIntervalMs = config.avatar_status_interval_ms;
 
-    this._wss = new WebSocketServer({ port });
+    this._wss = new WebSocketServer({ port: config.port });
 
     this._wss.on('connection', (ws: WebSocket) => {
       logger.info('Electron Desktop UI connected');
@@ -81,7 +84,7 @@ export class DesktopUIController {
           shellKind,
         }));
       }
-    }, 1500);
+    }, this._avatarStatusIntervalMs);
 
     this._initialized = true;
     logger.info('DesktopUIController started');

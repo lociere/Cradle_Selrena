@@ -17,11 +17,11 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-# 单仓根级元数据——Python 运行时依赖统一由 core/python-soul 管理
+# 单仓根级元数据——Python 运行时依赖统一由 core/ai-core 管理
 dependencies = []
 
 [tool.uv.sources]
-cradle-selrena-core = { path = "core/python-soul", editable = true }
+cradle-selrena-core = { path = "core/ai-core", editable = true }
 
 [tool.ruff]
 line-length = 88
